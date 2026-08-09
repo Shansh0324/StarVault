@@ -11,6 +11,7 @@ import (
 	"starvault/core/internal/handlers"
 	"starvault/core/internal/repository"
 	"starvault/core/internal/services"
+	"encoding/hex"
 )
 
 // Minimal env loader for MVP to avoid extra dependencies
@@ -80,6 +81,23 @@ func main() {
 	authSvc := &services.AuthService{UserRepo: userRepo}
 	authHandler := &handlers.AuthHandler{AuthService: authSvc}
 
+	// Vault dependencies
+	masterKeyHex := os.Getenv("STARVAULT_MASTER_KEY")
+	if masterKeyHex == "" {
+		log.Fatal("STARVAULT_MASTER_KEY is required")
+	}
+	masterKey, err := hex.DecodeString(masterKeyHex)
+	if err != nil || len(masterKey) != 32 {
+		log.Fatal("STARVAULT_MASTER_KEY must be a valid 64-character hex string")
+	}
+	encSvc, err := services.NewEncryptionService(masterKey)
+	if err != nil {
+		log.Fatal("Failed to initialize EncryptionService")
+	}
+	vaultRepo := &repository.VaultRepository{DB: db}
+	vaultSvc := &services.VaultService{VaultRepo: vaultRepo, EncryptSvc: encSvc}
+	vaultHandler := &handlers.VaultHandler{VaultService: vaultSvc}
+
 	port := os.Getenv("CORE_PORT")
 	if port == "" {
 		port = "8080"
@@ -101,6 +119,22 @@ func main() {
 	http.HandleFunc("/internal/users/verify", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodPost {
 			authHandler.VerifyUser(w, r)
+		} else {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		}
+	})
+
+	http.HandleFunc("/internal/vault/data", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost {
+			vaultHandler.CreateVaultData(w, r)
+		} else {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		}
+	})
+
+	http.HandleFunc("/internal/vault/data/", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet {
+			vaultHandler.GetVaultData(w, r)
 		} else {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		}

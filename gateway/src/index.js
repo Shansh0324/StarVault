@@ -5,6 +5,7 @@ const path = require('path');
 dotenv.config({ path: path.resolve(__dirname, '../../.env') });
 
 const authRoutes = require('./routes/auth.routes');
+const vaultRoutes = require('./routes/vault.routes');
 
 const app = express();
 app.use(express.json());
@@ -17,6 +18,7 @@ app.get('/health', (req, res) => {
 
 // Mount routes
 app.use('/api/v1/auth', authRoutes);
+app.use('/api/v1/vault', vaultRoutes);
 
 if (require.main === module) {
     app.listen(PORT, () => {
