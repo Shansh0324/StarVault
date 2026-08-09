@@ -1,0 +1,36 @@
+# Environment Variables
+.env
+.env.*
+!.env.example
+
+# Custom Agent Files
+.agents/
+
+# Node.js
+node_modules/
+npm-debug.log
+yarn-error.log
+
+# Go
+/core/core-service
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+
+# Docker
+.docker/
+
+# OS/IDE Files
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
