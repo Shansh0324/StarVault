@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strings"
 
 	_ "github.com/lib/pq"
 	"starvault/core/internal/handlers"
@@ -98,6 +99,14 @@ func main() {
 	vaultSvc := &services.VaultService{VaultRepo: vaultRepo, EncryptSvc: encSvc}
 	vaultHandler := &handlers.VaultHandler{VaultService: vaultSvc}
 
+	appRepo := &repository.AppRepository{DB: db}
+	appSvc := &services.AppService{AppRepo: appRepo}
+	appHandler := &handlers.AppHandler{AppService: appSvc}
+
+	consentRepo := &repository.ConsentRepository{DB: db}
+	consentSvc := &services.ConsentService{ConsentRepo: consentRepo, AppRepo: appRepo}
+	consentHandler := &handlers.ConsentHandler{ConsentService: consentSvc}
+
 	port := os.Getenv("CORE_PORT")
 	if port == "" {
 		port = "8080"
@@ -135,6 +144,44 @@ func main() {
 	http.HandleFunc("/internal/vault/data/", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodGet {
 			vaultHandler.GetVaultData(w, r)
+		} else {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		}
+	})
+
+	http.HandleFunc("/internal/apps", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost {
+			appHandler.CreateApp(w, r)
+		} else {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		}
+	})
+
+	http.HandleFunc("/internal/consents", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost {
+			consentHandler.CreateConsent(w, r)
+		} else if r.Method == http.MethodGet {
+			consentHandler.ListConsents(w, r)
+		} else {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		}
+	})
+
+	http.HandleFunc("/internal/consents/check", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost {
+			consentHandler.CheckConsent(w, r)
+		} else {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		}
+	})
+
+	http.HandleFunc("/internal/consents/", func(w http.ResponseWriter, r *http.Request) {
+		// Basic manual routing: /internal/consents/{id} OR /internal/consents/{id}/revoke
+		path := r.URL.Path
+		if r.Method == http.MethodGet {
+			consentHandler.GetConsent(w, r)
+		} else if r.Method == http.MethodPost && strings.HasSuffix(path, "/revoke") {
+			consentHandler.RevokeConsent(w, r)
 		} else {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		}
