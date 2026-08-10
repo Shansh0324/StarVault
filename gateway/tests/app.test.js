@@ -1,14 +1,13 @@
 const request = require('supertest');
 const app = require('../src/index');
+const apiClient = require('./helpers/api.client');
 
 describe('App Registration Endpoints', () => {
     let appId = '';
     let secret = '';
 
     it('should successfully register a new application', async () => {
-        const res = await request(app)
-            .post('/api/v1/apps/register')
-            .send({ name: 'My First Healthcare App' });
+        const res = await apiClient.post('/api/v1/apps/register', { name: 'My First Healthcare App' });
         
         expect(res.statusCode).toBe(201);
         expect(res.body).toHaveProperty('appId');
@@ -21,9 +20,7 @@ describe('App Registration Endpoints', () => {
     });
 
     it('should generate different secrets and IDs for multiple registrations', async () => {
-        const res = await request(app)
-            .post('/api/v1/apps/register')
-            .send({ name: 'My Second Healthcare App' });
+        const res = await apiClient.post('/api/v1/apps/register', { name: 'My Second Healthcare App' });
         
         expect(res.statusCode).toBe(201);
         expect(res.body.appId).not.toBe(appId);
@@ -31,24 +28,18 @@ describe('App Registration Endpoints', () => {
     });
 
     it('should reject registration with missing name', async () => {
-        const res = await request(app)
-            .post('/api/v1/apps/register')
-            .send({});
+        const res = await apiClient.post('/api/v1/apps/register', {});
         expect(res.statusCode).toBe(400);
     });
 
     it('should reject registration with empty name', async () => {
-        const res = await request(app)
-            .post('/api/v1/apps/register')
-            .send({ name: '   ' });
+        const res = await apiClient.post('/api/v1/apps/register', { name: '   ' });
         expect(res.statusCode).toBe(400);
     });
 
     it('should reject registration with excessively long name', async () => {
         const longName = 'A'.repeat(101);
-        const res = await request(app)
-            .post('/api/v1/apps/register')
-            .send({ name: longName });
+        const res = await apiClient.post('/api/v1/apps/register', { name: longName });
         expect(res.statusCode).toBe(400);
     });
 
