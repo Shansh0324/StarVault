@@ -107,6 +107,8 @@ func main() {
 	consentSvc := &services.ConsentService{ConsentRepo: consentRepo, AppRepo: appRepo}
 	consentHandler := &handlers.ConsentHandler{ConsentService: consentSvc}
 
+	accessSvc := &services.AccessService{AppRepo: appRepo, ConsentService: consentSvc, VaultService: vaultSvc}
+	accessHandler := &handlers.AccessHandler{AccessService: accessSvc}
 	port := os.Getenv("CORE_PORT")
 	if port == "" {
 		port = "8080"
@@ -182,6 +184,14 @@ func main() {
 			consentHandler.GetConsent(w, r)
 		} else if r.Method == http.MethodPost && strings.HasSuffix(path, "/revoke") {
 			consentHandler.RevokeConsent(w, r)
+		} else {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		}
+	})
+
+	http.HandleFunc("/internal/access/data", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost {
+			accessHandler.AccessData(w, r)
 		} else {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		}
