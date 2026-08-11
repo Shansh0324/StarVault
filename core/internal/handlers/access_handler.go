@@ -14,19 +14,26 @@ type AccessHandler struct {
 }
 
 func (h *AccessHandler) AccessData(w http.ResponseWriter, r *http.Request) {
-	userID := r.Header.Get("X-User-ID")
-	if userID == "" {
-		http.Error(w, `{"error":"missing X-User-ID header"}`, http.StatusUnauthorized)
-		return
-	}
-
 	var req dtos.AccessDataRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, `{"error":"invalid request body"}`, http.StatusBadRequest)
 		return
 	}
 
-	res, err := h.AccessService.AccessData(r.Context(), userID, req)
+	accessToken := r.Header.Get("X-Access-Token")
+	var res *dtos.VaultDataResponse
+	var err error
+	
+	if accessToken != "" {
+		res, err = h.AccessService.AccessDataWithToken(r.Context(), accessToken, req)
+	} else {
+		userID := r.Header.Get("X-User-ID")
+		if userID == "" {
+			http.Error(w, `{"error":"missing X-User-ID or X-Access-Token header"}`, http.StatusUnauthorized)
+			return
+		}
+		res, err = h.AccessService.AccessData(r.Context(), userID, req)
+	}
 	if err != nil {
 		if strings.Contains(err.Error(), "unauthorized") {
 			http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusUnauthorized)

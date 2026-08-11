@@ -72,6 +72,8 @@ func loadEnv(filename string) {
 			}
 		}
 		if key != "" {
+			val = strings.TrimSpace(val)
+			key = strings.TrimSpace(key)
 			os.Setenv(key, val)
 		}
 	}
@@ -107,6 +109,9 @@ func main() {
 	}
 
 	connStr := fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=disable", dbUser, dbPass, dbHost, dbPort, dbName)
+	log.Printf("DB Host: %q", dbHost)
+	log.Printf("DB User: %q", dbUser)
+	log.Printf("DB Pass len: %d", len(dbPass))
 	db, err := sql.Open("postgres", connStr)
 	if err != nil {
 		log.Fatalf("Failed to open DB: %v", err)
@@ -137,33 +142,50 @@ func main() {
 	if err != nil || len(masterKey) != 32 {
 		log.Fatal("STARVAULT_MASTER_KEY must be a valid 64-character hex string")
 	}
-	encSvc, err := services.NewEncryptionService(masterKey)
-	if err != nil {
-		log.Fatal("Failed to initialize EncryptionService")
-	}
+
+
 	vaultRepo := &repository.VaultRepository{DB: db}
-	vaultSvc := &services.VaultService{VaultRepo: vaultRepo, EncryptSvc: encSvc}
-	vaultHandler := &handlers.VaultHandler{VaultService: vaultSvc}
-
 	appRepo := &repository.AppRepository{DB: db}
-	appSvc := &services.AppService{AppRepo: appRepo}
-	appHandler := &handlers.AppHandler{AppService: appSvc}
-
+	tokenRepo := &repository.TokenRepository{DB: db}
 	consentRepo := &repository.ConsentRepository{DB: db}
-	consentSvc := &services.ConsentService{ConsentRepo: consentRepo, AppRepo: appRepo}
-	consentHandler := &handlers.ConsentHandler{ConsentService: consentSvc}
-
 	auditRepo := &repository.AuditRepository{DB: db}
-	auditSvc := &services.AuditService{AuditRepo: auditRepo}
-	auditHandler := &handlers.AuditHandler{AuditRepo: auditRepo}
 
-	accessSvc := &services.AccessService{
-		AppRepo:        appRepo,
-		ConsentService: consentSvc,
-		VaultService:   vaultSvc,
-		AuditService:   auditSvc,
+	auditService := &services.AuditService{AuditRepo: auditRepo}
+	encryptSvc, err := services.NewEncryptionService(masterKey)
+	if err != nil {
+		log.Fatalf("Failed to initialize encryption service: %v", err)
 	}
-	accessHandler := &handlers.AccessHandler{AccessService: accessSvc}
+
+	appService := &services.AppService{AppRepo: appRepo}
+	consentService := &services.ConsentService{
+		ConsentRepo:  consentRepo,
+		AppRepo:      appRepo,
+	}
+	tokenService := &services.TokenService{
+		TokenRepo:      tokenRepo,
+		AppRepo:        appRepo,
+		ConsentService: consentService,
+		AuditService:   auditService,
+	}
+	vaultService := &services.VaultService{
+		VaultRepo:  vaultRepo,
+		EncryptSvc: encryptSvc,
+	}
+	accessService := &services.AccessService{
+		AppRepo:        appRepo,
+		ConsentService: consentService,
+		VaultService:   vaultService,
+		AuditService:   auditService,
+		TokenRepo:      tokenRepo,
+	}
+	
+	vaultHandler := &handlers.VaultHandler{VaultService: vaultService}
+	appHandler := &handlers.AppHandler{AppService: appService}
+	consentHandler := &handlers.ConsentHandler{ConsentService: consentService}
+	auditHandler := &handlers.AuditHandler{AuditRepo: auditRepo}
+	accessHandler := &handlers.AccessHandler{AccessService: accessService}
+	tokenHandler := &handlers.TokenHandler{TokenService: tokenService}
+
 	port := os.Getenv("CORE_PORT")
 	if port == "" {
 		port = "8080"
@@ -274,6 +296,22 @@ func main() {
 		}
 	})
 
+	mux.HandleFunc("/internal/oauth/token", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost {
+			tokenHandler.IssueToken(w, r)
+		} else {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		}
+	})
+
+	mux.HandleFunc("/internal/oauth/revoke", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost {
+			tokenHandler.RevokeToken(w, r)
+		} else {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		}
+	})
+
 	mux.HandleFunc("/internal/audits/latest", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodGet {
 			auditHandler.GetLatestAudit(w, r)
@@ -284,7 +322,7 @@ func main() {
 
 	// Start asynchronous audit worker with context
 	workerCtx, workerCancel := context.WithCancel(context.Background())
-	go auditSvc.StartAuditWorker(workerCtx)
+	go auditService.StartAuditWorker(workerCtx)
 
 	srv := &http.Server{
 		Addr:         ":" + port,

@@ -1,12 +1,28 @@
-FROM golang:alpine
+FROM golang:1.25.0-alpine AS builder
 
 WORKDIR /app
 
-COPY go.mod ./
-COPY . .
-RUN go get github.com/lib/pq && go get golang.org/x/crypto/bcrypt && go mod tidy
+# Install dependencies required for some CGO builds if needed, though we use pure Go here mostly
+# RUN apk add --no-cache git build-base
 
-RUN go build -o core-service main.go
+COPY go.mod go.sum ./
+RUN go mod download
+
+COPY . .
+# Build statically linked binary
+RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o core-service main.go
+
+FROM alpine:latest
+
+# Create a non-root user
+RUN adduser -D -g '' appuser
+
+WORKDIR /app
+
+COPY --from=builder /app/core-service .
+
+# Use non-root user
+USER appuser
 
 EXPOSE 8080
 

@@ -14,19 +14,13 @@ type AuditService struct {
 	AuditRepo *repository.AuditRepository
 }
 
-// LogAccessAttempt logs the access attempt asynchronously to the durable queue (PostgreSQL).
+// LogAccessAttempt logs the access attempt synchronously to the durable queue (PostgreSQL).
 func (s *AuditService) LogAccessAttempt(ctx context.Context, userID, appID, action, scope string) {
-	// By running this in a goroutine, we ensure the caller (AccessHandler)
-	// is not blocked. However, since we write to Postgres directly as our
-	// durable queue, we can just do it synchronously and it will be fast enough.
-	// But to strictly decouple it, we spawn a goroutine.
-	go func() {
-		// Log to the durable queue with PENDING status.
-		err := s.AuditRepo.LogEvent(ctx, userID, appID, action, scope)
-		if err != nil {
-			log.Printf("ERROR: Failed to durable queue audit log for user %s, app %s: %v", userID, appID, err)
-		}
-	}()
+	// Execute synchronously to ensure chronological ordering in Postgres
+	err := s.AuditRepo.LogEvent(ctx, userID, appID, action, scope)
+	if err != nil {
+		log.Printf("ERROR: Failed to durable queue audit log for user %s, app %s: %v", userID, appID, err)
+	}
 }
 
 // StartAuditWorker starts the background worker that hashes events.

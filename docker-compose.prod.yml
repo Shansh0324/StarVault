@@ -4,16 +4,16 @@ services:
   db:
     image: postgres:15-alpine
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:-starvault}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-starvault_dev}
-      POSTGRES_DB: ${POSTGRES_DB:-starvault_db}
-    ports:
-      - "5433:5432"
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./db/migrations:/docker-entrypoint-initdb.d
+    networks:
+      - starvault_network
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-starvault} -d ${POSTGRES_DB:-starvault_db}"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -21,13 +21,13 @@ services:
   core:
     build: ./core
     restart: on-failure
-    ports:
-      - "8080:8080"
     env_file:
       - .env
     environment:
       - POSTGRES_HOST=db
       - POSTGRES_PORT=5432
+    networks:
+      - starvault_network
     depends_on:
       db:
         condition: service_healthy
@@ -41,8 +41,14 @@ services:
       - .env
     environment:
       - CORE_URL=http://core:8080
+    networks:
+      - starvault_network
     depends_on:
       - core
+
+networks:
+  starvault_network:
+    driver: bridge
 
 volumes:
   postgres_data:

@@ -11,14 +11,30 @@ type AuditHandler struct {
 }
 
 func (h *AuditHandler) GetLatestAudit(w http.ResponseWriter, r *http.Request) {
-	query := `
-		SELECT id, user_id, app_id, action, COALESCE(scope, ''), event_hash, timestamp, blockchain_status
-		FROM audit_logs
-		ORDER BY timestamp DESC
-		LIMIT 1
-	`
+	appID := r.URL.Query().Get("appId")
+	var query string
+	var args []interface{}
+
+	if appID != "" {
+		query = `
+			SELECT id, user_id, app_id, action, COALESCE(scope, ''), event_hash, timestamp, blockchain_status
+			FROM audit_logs
+			WHERE app_id = $1
+			ORDER BY timestamp DESC
+			LIMIT 1
+		`
+		args = append(args, appID)
+	} else {
+		query = `
+			SELECT id, user_id, app_id, action, COALESCE(scope, ''), event_hash, timestamp, blockchain_status
+			FROM audit_logs
+			ORDER BY timestamp DESC
+			LIMIT 1
+		`
+	}
+
 	var log repository.AuditLog
-	err := h.AuditRepo.DB.QueryRow(query).Scan(&log.ID, &log.UserID, &log.AppID, &log.Action, &log.Scope, &log.EventHash, &log.Timestamp, &log.BlockchainStatus)
+	err := h.AuditRepo.DB.QueryRow(query, args...).Scan(&log.ID, &log.UserID, &log.AppID, &log.Action, &log.Scope, &log.EventHash, &log.Timestamp, &log.BlockchainStatus)
 	if err != nil {
 		http.Error(w, "Audit not found", http.StatusNotFound)
 		return
