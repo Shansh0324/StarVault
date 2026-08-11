@@ -18,6 +18,7 @@ const vaultRoutes = require('./routes/vault.routes');
 const appRoutes = require('./routes/app.routes');
 const consentRoutes = require('./routes/consent.routes');
 const accessRoutes = require('./routes/access.routes');
+const tokenRoutes = require('./routes/token.routes');
 const app = express();
 
 // Security Headers
@@ -68,6 +69,8 @@ app.use('/api/v1/vault', vaultRoutes);
 app.use('/api/v1/apps', standardLimit, appRoutes);
 app.use('/api/v1/consents', consentRoutes);
 app.use('/api/v1/access', standardLimit, accessRoutes);
+app.use('/api/v1/oauth', standardLimit, tokenRoutes);
+
 if (require.main === module) {
     const server = app.listen(PORT, () => {
         logger.info('startup_complete', null, { port: PORT });

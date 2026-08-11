@@ -30,9 +30,9 @@ describe('Access Gateway Endpoints', () => {
         // Wait a few seconds for AuditWorker to hash and commit (ticker is 3s)
         await new Promise(resolve => setTimeout(resolve, 3500));
 
-        // Fetch latest audit from Core (assumes local testing environment)
+        // Fetch latest audit for this app from Core
         const coreUrl = process.env.CORE_URL || 'http://localhost:8080';
-        const auditRes = await fetch(`${coreUrl}/internal/audits/latest`);
+        const auditRes = await fetch(`${coreUrl}/internal/audits/latest?appId=${appId}`);
         expect(auditRes.status).toBe(200);
         const audit = await auditRes.json();
         

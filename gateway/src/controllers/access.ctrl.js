@@ -5,11 +5,16 @@ const accessData = async (req, res) => {
     try {
         AccessDto.validate(req);
 
+        const headers = {};
+        if (req.isOpaqueToken) {
+            headers['X-Access-Token'] = req.accessToken;
+        } else {
+            headers['X-User-ID'] = req.user.userId;
+        }
+
         const { response, data } = await coreFetch(req, '/internal/access/data', {
             method: 'POST',
-            headers: {
-                'X-User-ID': req.user.userId
-            },
+            headers: headers,
             body: JSON.stringify(req.body)
         });
 
