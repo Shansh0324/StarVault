@@ -26,6 +26,20 @@ describe('Access Gateway Endpoints', () => {
         const res = await apiClient.post('/api/v1/access/data', { appId, secret: appSecret, scope: 'medical_data', vaultDataId }, tokenA);
         expect(res.statusCode).toBe(200);
         expect(res.body.data).toBe('Secret patient record');
+
+        // Wait a few seconds for AuditWorker to hash and commit (ticker is 3s)
+        await new Promise(resolve => setTimeout(resolve, 3500));
+
+        // Fetch latest audit from Core (assumes local testing environment)
+        const coreUrl = process.env.CORE_URL || 'http://localhost:8080';
+        const auditRes = await fetch(`${coreUrl}/internal/audits/latest`);
+        expect(auditRes.status).toBe(200);
+        const audit = await auditRes.json();
+        
+        expect(audit.action).toBe('ACCESS_GRANTED');
+        expect(audit.appId).toBe(appId);
+        expect(audit.blockchainStatus).toBe('COMMITTED');
+        expect(audit.eventHash).not.toBe('');
     });
 
     it('should reject access with invalid app secret', async () => {

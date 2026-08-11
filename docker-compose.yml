@@ -12,6 +12,11 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./db/schema.sql:/docker-entrypoint-initdb.d/schema.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-starvault} -d ${POSTGRES_DB:-starvault_db}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
 
   core:
     build: ./core
@@ -23,7 +28,8 @@ services:
     environment:
       - POSTGRES_HOST=db
     depends_on:
-      - db
+      db:
+        condition: service_healthy
 
 volumes:
   postgres_data:

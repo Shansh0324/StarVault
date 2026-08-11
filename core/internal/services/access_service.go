@@ -1,6 +1,7 @@
 package services
 
 import (
+	"context"
 	"errors"
 
 	"golang.org/x/crypto/bcrypt"
@@ -13,20 +14,23 @@ type AccessService struct {
 	AppRepo        *repository.AppRepository
 	ConsentService *ConsentService
 	VaultService   *VaultService
+	AuditService   *AuditService
 }
 
-func (s *AccessService) AccessData(userID string, req dtos.AccessDataRequest) (*dtos.VaultDataResponse, error) {
+func (s *AccessService) AccessData(ctx context.Context, userID string, req dtos.AccessDataRequest) (*dtos.VaultDataResponse, error) {
 	if err := req.Validate(); err != nil {
 		return nil, err
 	}
 
 	// 1. Authenticate Application
-	appRecord, err := s.AppRepo.GetAppByID(req.AppID)
+	appRecord, err := s.AppRepo.GetAppByID(ctx, req.AppID)
 	if err != nil {
+		s.AuditService.LogAccessAttempt(ctx, userID, req.AppID, "ACCESS_DENIED_INVALID_APP", req.Scope)
 		return nil, errors.New("unauthorized: invalid application credentials")
 	}
 
 	if err := bcrypt.CompareHashAndPassword([]byte(appRecord.SecretHash), []byte(req.Secret)); err != nil {
+		s.AuditService.LogAccessAttempt(ctx, userID, req.AppID, "ACCESS_DENIED_INVALID_SECRET", req.Scope)
 		return nil, errors.New("unauthorized: invalid application credentials")
 	}
 
@@ -36,25 +40,30 @@ func (s *AccessService) AccessData(userID string, req dtos.AccessDataRequest) (*
 		AppID:  req.AppID,
 		Scope:  req.Scope,
 	}
-	checkRes, err := s.ConsentService.CheckConsent(consentReq)
+	checkRes, err := s.ConsentService.CheckConsent(ctx, consentReq)
 	if err != nil {
+		s.AuditService.LogAccessAttempt(ctx, userID, req.AppID, "ACCESS_DENIED_CONSENT_ERROR", req.Scope)
 		return nil, errors.New("forbidden: error checking consent")
 	}
 	if !checkRes.Allowed {
+		s.AuditService.LogAccessAttempt(ctx, userID, req.AppID, "ACCESS_DENIED_CONSENT_REJECTED", req.Scope)
 		return nil, errors.New("forbidden: access denied by consent manager")
 	}
 
 	// 3. Retrieve and Decrypt Vault Data
 	// VaultService.GetVaultData enforces IDOR because it accepts userID.
-	vaultData, err := s.VaultService.GetVaultData(req.VaultDataID, userID)
+	vaultData, err := s.VaultService.GetVaultData(ctx, req.VaultDataID, userID)
 	if err != nil {
+		s.AuditService.LogAccessAttempt(ctx, userID, req.AppID, "ACCESS_DENIED_VAULT_NOT_FOUND", req.Scope)
 		return nil, errors.New("forbidden: vault data not found or access denied")
 	}
 
 	// 4. Validate Scope vs DataType
 	if vaultData.DataType != req.Scope {
+		s.AuditService.LogAccessAttempt(ctx, userID, req.AppID, "ACCESS_DENIED_SCOPE_MISMATCH", req.Scope)
 		return nil, errors.New("forbidden: requested scope does not match vault data type")
 	}
 
+	s.AuditService.LogAccessAttempt(ctx, userID, req.AppID, "ACCESS_GRANTED", req.Scope)
 	return vaultData, nil
 }

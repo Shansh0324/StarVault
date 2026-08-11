@@ -1,6 +1,7 @@
 package services
 
 import (
+	"context"
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/rand"
@@ -22,7 +23,7 @@ func NewEncryptionService(hexKey []byte) (*EncryptionService, error) {
 	return &EncryptionService{key: hexKey}, nil
 }
 
-func (s *EncryptionService) Encrypt(plaintext []byte) (string, error) {
+func (s *EncryptionService) Encrypt(ctx context.Context, plaintext []byte) (string, error) {
 	block, err := aes.NewCipher(s.key)
 	if err != nil {
 		return "", err
@@ -44,7 +45,7 @@ func (s *EncryptionService) Encrypt(plaintext []byte) (string, error) {
 	return fmt.Sprintf("%s:%s", base64.StdEncoding.EncodeToString(nonce), base64.StdEncoding.EncodeToString(ciphertext)), nil
 }
 
-func (s *EncryptionService) Decrypt(payload string) ([]byte, error) {
+func (s *EncryptionService) Decrypt(ctx context.Context, payload string) ([]byte, error) {
 	parts := strings.Split(payload, ":")
 	if len(parts) != 2 {
 		return nil, errors.New("invalid encrypted payload format")

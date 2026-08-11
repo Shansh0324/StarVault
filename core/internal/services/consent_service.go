@@ -1,6 +1,7 @@
 package services
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"time"
@@ -20,13 +21,13 @@ type ConsentService struct {
 	AppRepo     *repository.AppRepository
 }
 
-func (s *ConsentService) CreateConsent(userID string, req dtos.CreateConsentRequest) (*dtos.ConsentResponse, error) {
+func (s *ConsentService) CreateConsent(ctx context.Context, userID string, req dtos.CreateConsentRequest) (*dtos.ConsentResponse, error) {
 	if err := req.Validate(); err != nil {
 		return nil, err
 	}
 
 	// Verify application exists
-	if _, err := s.AppRepo.GetAppByID(req.AppID); err != nil {
+	if _, err := s.AppRepo.GetAppByID(ctx, req.AppID); err != nil {
 		return nil, errors.New("invalid app_id: application does not exist")
 	}
 
@@ -44,7 +45,7 @@ func (s *ConsentService) CreateConsent(userID string, req dtos.CreateConsentRequ
 
 	expiresAt, _ := time.Parse(time.RFC3339, req.ExpiresAt)
 
-	id, createdAt, err := s.ConsentRepo.CreateConsent(userID, req.AppID, string(scopesJSON), req.Purpose, expiresAt)
+	id, createdAt, err := s.ConsentRepo.CreateConsent(ctx, userID, req.AppID, string(scopesJSON), req.Purpose, expiresAt)
 	if err != nil {
 		return nil, err
 	}
@@ -60,16 +61,16 @@ func (s *ConsentService) CreateConsent(userID string, req dtos.CreateConsentRequ
 	}, nil
 }
 
-func (s *ConsentService) GetConsent(id, userID string) (*dtos.ConsentResponse, error) {
-	record, err := s.ConsentRepo.GetConsentByIDAndUserID(id, userID)
+func (s *ConsentService) GetConsent(ctx context.Context, id, userID string) (*dtos.ConsentResponse, error) {
+	record, err := s.ConsentRepo.GetConsentByIDAndUserID(ctx, id, userID)
 	if err != nil {
 		return nil, err // Returns "consent not found"
 	}
 	return s.mapToDTO(record), nil
 }
 
-func (s *ConsentService) ListConsents(userID string) ([]dtos.ConsentResponse, error) {
-	records, err := s.ConsentRepo.ListConsentsByUserID(userID)
+func (s *ConsentService) ListConsents(ctx context.Context, userID string) ([]dtos.ConsentResponse, error) {
+	records, err := s.ConsentRepo.ListConsentsByUserID(ctx, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -81,12 +82,12 @@ func (s *ConsentService) ListConsents(userID string) ([]dtos.ConsentResponse, er
 	return responses, nil
 }
 
-func (s *ConsentService) RevokeConsent(id, userID string) error {
-	return s.ConsentRepo.RevokeConsent(id, userID)
+func (s *ConsentService) RevokeConsent(ctx context.Context, id, userID string) error {
+	return s.ConsentRepo.RevokeConsent(ctx, id, userID)
 }
 
-func (s *ConsentService) CheckConsent(req dtos.CheckConsentRequest) (*dtos.CheckConsentResponse, error) {
-	record, err := s.ConsentRepo.GetActiveConsentForApp(req.UserID, req.AppID)
+func (s *ConsentService) CheckConsent(ctx context.Context, req dtos.CheckConsentRequest) (*dtos.CheckConsentResponse, error) {
+	record, err := s.ConsentRepo.GetActiveConsentForApp(ctx, req.UserID, req.AppID)
 	if err != nil {
 		// No active consent found
 		return &dtos.CheckConsentResponse{Allowed: false}, nil

@@ -1,6 +1,5 @@
 const VaultDTO = require('../dtos/vault.dto');
-
-const CORE_URL = process.env.CORE_URL || 'http://localhost:8080';
+const coreFetch = require('../utils/coreClient');
 
 class VaultController {
     static async create(req, res) {
@@ -10,16 +9,13 @@ class VaultController {
             // req.user comes from JWT middleware requireAuth
             const userId = req.user.userId;
 
-            const response = await fetch(`${CORE_URL}/internal/vault/data`, {
+            const { response, data } = await coreFetch(req, '/internal/vault/data', {
                 method: 'POST',
                 headers: { 
-                    'Content-Type': 'application/json',
                     'X-User-ID': userId 
                 },
                 body: JSON.stringify(dto)
             });
-            
-            const data = await response.json();
             
             if (!response.ok) {
                 return res.status(response.status).json({ error: { message: data.error || 'Internal Error' } });
@@ -29,7 +25,8 @@ class VaultController {
             if (error.message.includes('required') || error.message.includes('exceeds')) {
                 return res.status(400).json({ error: { code: 'INVALID_REQUEST', message: error.message } });
             }
-            res.status(500).json({ error: { code: 'INTERNAL_ERROR', message: 'Failed to communicate with Core' } });
+            const errorMsg = error.message === 'Core request timed out' ? 'Core request timed out' : 'Failed to communicate with Core';
+            res.status(500).json({ error: { code: 'INTERNAL_ERROR', message: errorMsg } });
         }
     }
 
@@ -42,14 +39,10 @@ class VaultController {
                 return res.status(400).json({ error: { code: 'INVALID_REQUEST', message: 'Vault ID is required' } });
             }
 
-            const response = await fetch(`${CORE_URL}/internal/vault/data/${vaultId}`, {
+            const { response, data } = await coreFetch(req, `/internal/vault/data/${vaultId}`, {
                 method: 'GET',
-                headers: { 
-                    'X-User-ID': userId 
-                }
+                headers: { 'X-User-ID': userId }
             });
-            
-            const data = await response.json();
             if (!response.ok) {
                 // If it's a 404 from core due to IDOR, we return it as is.
                 return res.status(response.status).json({ error: { message: data.error || 'Internal Error' } });
@@ -57,7 +50,8 @@ class VaultController {
             
             res.status(200).json(data);
         } catch (error) {
-            res.status(500).json({ error: { code: 'INTERNAL_ERROR', message: 'Failed to communicate with Core' } });
+            const errorMsg = error.message === 'Core request timed out' ? 'Core request timed out' : 'Failed to communicate with Core';
+            res.status(500).json({ error: { code: 'INTERNAL_ERROR', message: errorMsg } });
         }
     }
 }

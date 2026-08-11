@@ -25,7 +25,7 @@ func (h *ConsentHandler) CreateConsent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	res, err := h.ConsentService.CreateConsent(userID, req)
+	res, err := h.ConsentService.CreateConsent(r.Context(), userID, req)
 	if err != nil {
 		if strings.Contains(err.Error(), "required") || strings.Contains(err.Error(), "unsupported") || strings.Contains(err.Error(), "duplicate") || strings.Contains(err.Error(), "future") {
 			sendError(w, http.StatusBadRequest, err.Error())
@@ -52,7 +52,7 @@ func (h *ConsentHandler) GetConsent(w http.ResponseWriter, r *http.Request) {
 	pathParts := strings.Split(r.URL.Path, "/")
 	id := pathParts[len(pathParts)-1]
 
-	res, err := h.ConsentService.GetConsent(id, userID)
+	res, err := h.ConsentService.GetConsent(r.Context(), id, userID)
 	if err != nil {
 		sendError(w, http.StatusNotFound, "Consent not found")
 		return
@@ -70,7 +70,7 @@ func (h *ConsentHandler) ListConsents(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	res, err := h.ConsentService.ListConsents(userID)
+	res, err := h.ConsentService.ListConsents(r.Context(), userID)
 	if err != nil {
 		sendError(w, http.StatusInternalServerError, "Internal server error")
 		return
@@ -91,7 +91,7 @@ func (h *ConsentHandler) RevokeConsent(w http.ResponseWriter, r *http.Request) {
 	pathParts := strings.Split(r.URL.Path, "/")
 	id := pathParts[len(pathParts)-2] // /internal/consents/{id}/revoke
 
-	err := h.ConsentService.RevokeConsent(id, userID)
+	err := h.ConsentService.RevokeConsent(r.Context(), id, userID)
 	if err != nil {
 		sendError(w, http.StatusNotFound, "Consent not found or already revoked")
 		return
@@ -108,7 +108,7 @@ func (h *ConsentHandler) CheckConsent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	res, err := h.ConsentService.CheckConsent(req)
+	res, err := h.ConsentService.CheckConsent(r.Context(), req)
 	if err != nil {
 		sendError(w, http.StatusInternalServerError, "Internal server error")
 		return

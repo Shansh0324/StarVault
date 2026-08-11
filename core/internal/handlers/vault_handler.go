@@ -25,7 +25,7 @@ func (h *VaultHandler) CreateVaultData(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	res, err := h.VaultService.CreateVaultData(userID, req)
+	res, err := h.VaultService.CreateVaultData(r.Context(), userID, req)
 	if err != nil {
 		if err.Error() == "dataType and data are required" || err.Error() == "data payload exceeds maximum allowed size" {
 			sendError(w, http.StatusBadRequest, err.Error())
@@ -55,7 +55,7 @@ func (h *VaultHandler) GetVaultData(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	res, err := h.VaultService.GetVaultData(id, userID)
+	res, err := h.VaultService.GetVaultData(r.Context(), id, userID)
 	if err != nil {
 		if err.Error() == "record not found" {
 			sendError(w, http.StatusNotFound, "Record not found")

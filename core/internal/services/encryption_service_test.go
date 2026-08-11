@@ -1,15 +1,19 @@
 package services
 
 import (
+	"context"
 	"bytes"
-	"encoding/hex"
+	"crypto/rand"
 	"strings"
 	"testing"
 )
 
 func TestEncryptionService(t *testing.T) {
-	keyStr := "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
-	keyBytes, _ := hex.DecodeString(keyStr)
+	keyBytes := make([]byte, 32)
+	_, err := rand.Read(keyBytes)
+	if err != nil {
+		t.Fatalf("Failed to generate test key: %v", err)
+	}
 
 	svc, err := NewEncryptionService(keyBytes)
 	if err != nil {
@@ -19,12 +23,12 @@ func TestEncryptionService(t *testing.T) {
 	plaintext := []byte("secret medical data")
 
 	// 1. Encrypt + decrypt returns original plaintext
-	payload, err := svc.Encrypt(plaintext)
+	payload, err := svc.Encrypt(context.Background(), plaintext)
 	if err != nil {
 		t.Fatalf("Failed to encrypt: %v", err)
 	}
 
-	decrypted, err := svc.Decrypt(payload)
+	decrypted, err := svc.Decrypt(context.Background(), payload)
 	if err != nil {
 		t.Fatalf("Failed to decrypt: %v", err)
 	}
@@ -33,7 +37,7 @@ func TestEncryptionService(t *testing.T) {
 	}
 
 	// 2. Fresh nonces (same plaintext -> different ciphertext)
-	payload2, _ := svc.Encrypt(plaintext)
+	payload2, _ := svc.Encrypt(context.Background(), plaintext)
 	if payload == payload2 {
 		t.Fatal("Ciphertexts match for same plaintext. Nonce is not fresh!")
 	}
@@ -42,7 +46,7 @@ func TestEncryptionService(t *testing.T) {
 	parts := strings.Split(payload, ":")
 	parts[1] = "A" + parts[1][1:] // tamper first character of ciphertext
 	tamperedPayload := parts[0] + ":" + parts[1]
-	_, err = svc.Decrypt(tamperedPayload)
+	_, err = svc.Decrypt(context.Background(), tamperedPayload)
 	if err == nil {
 		t.Fatal("Expected decryption to fail on tampered ciphertext, but it succeeded")
 	}
@@ -54,8 +58,8 @@ func TestEncryptionService(t *testing.T) {
 	}
 
 	// 5. Empty plaintext
-	emptyPayload, _ := svc.Encrypt([]byte(""))
-	emptyDecrypted, _ := svc.Decrypt(emptyPayload)
+	emptyPayload, _ := svc.Encrypt(context.Background(), []byte(""))
+	emptyDecrypted, _ := svc.Decrypt(context.Background(), emptyPayload)
 	if len(emptyDecrypted) != 0 {
 		t.Fatalf("Expected empty decrypted result, got length %d", len(emptyDecrypted))
 	}

@@ -1,6 +1,7 @@
 package repository
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"time"
@@ -18,10 +19,10 @@ type VaultRecord struct {
 	CreatedAt        time.Time
 }
 
-func (r *VaultRepository) Create(userID, dataType, encryptedPayload string) (string, time.Time, error) {
+func (r *VaultRepository) Create(ctx context.Context, userID, dataType, encryptedPayload string) (string, time.Time, error) {
 	var id string
 	var createdAt time.Time
-	err := r.DB.QueryRow(`
+	err := r.DB.QueryRowContext(ctx, `
 		INSERT INTO vault_data (user_id, data_type, encrypted_payload)
 		VALUES ($1, $2, $3)
 		RETURNING id, created_at
@@ -30,9 +31,9 @@ func (r *VaultRepository) Create(userID, dataType, encryptedPayload string) (str
 	return id, createdAt, err
 }
 
-func (r *VaultRepository) GetByIDAndUserID(id, userID string) (*VaultRecord, error) {
+func (r *VaultRepository) GetByIDAndUserID(ctx context.Context, id, userID string) (*VaultRecord, error) {
 	record := &VaultRecord{}
-	err := r.DB.QueryRow(`
+	err := r.DB.QueryRowContext(ctx, `
 		SELECT id, user_id, data_type, encrypted_payload, created_at
 		FROM vault_data
 		WHERE id = $1 AND user_id = $2

@@ -1,6 +1,7 @@
 package repository
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"time"
@@ -22,11 +23,11 @@ type ConsentRecord struct {
 	RevokedAt sql.NullTime
 }
 
-func (r *ConsentRepository) CreateConsent(userID, appID, scopesJSON, purpose string, expiresAt time.Time) (string, time.Time, error) {
+func (r *ConsentRepository) CreateConsent(ctx context.Context, userID, appID, scopesJSON, purpose string, expiresAt time.Time) (string, time.Time, error) {
 	var id string
 	var createdAt time.Time
 
-	err := r.DB.QueryRow(`
+	err := r.DB.QueryRowContext(ctx, `
 		INSERT INTO consents (user_id, app_id, scopes, purpose, status, expires_at)
 		VALUES ($1, $2, $3, $4, 'ACTIVE', $5)
 		RETURNING id, created_at
@@ -35,9 +36,9 @@ func (r *ConsentRepository) CreateConsent(userID, appID, scopesJSON, purpose str
 	return id, createdAt, err
 }
 
-func (r *ConsentRepository) GetConsentByIDAndUserID(id, userID string) (*ConsentRecord, error) {
+func (r *ConsentRepository) GetConsentByIDAndUserID(ctx context.Context, id, userID string) (*ConsentRecord, error) {
 	record := &ConsentRecord{}
-	err := r.DB.QueryRow(`
+	err := r.DB.QueryRowContext(ctx, `
 		SELECT id, user_id, app_id, scopes, purpose, status, expires_at, created_at, revoked_at
 		FROM consents
 		WHERE id = $1 AND user_id = $2
@@ -56,8 +57,8 @@ func (r *ConsentRepository) GetConsentByIDAndUserID(id, userID string) (*Consent
 	return record, nil
 }
 
-func (r *ConsentRepository) ListConsentsByUserID(userID string) ([]*ConsentRecord, error) {
-	rows, err := r.DB.Query(`
+func (r *ConsentRepository) ListConsentsByUserID(ctx context.Context, userID string) ([]*ConsentRecord, error) {
+	rows, err := r.DB.QueryContext(ctx, `
 		SELECT id, user_id, app_id, scopes, purpose, status, expires_at, created_at, revoked_at
 		FROM consents
 		WHERE user_id = $1
@@ -83,8 +84,8 @@ func (r *ConsentRepository) ListConsentsByUserID(userID string) ([]*ConsentRecor
 	return records, nil
 }
 
-func (r *ConsentRepository) RevokeConsent(id, userID string) error {
-	res, err := r.DB.Exec(`
+func (r *ConsentRepository) RevokeConsent(ctx context.Context, id, userID string) error {
+	res, err := r.DB.ExecContext(ctx, `
 		UPDATE consents
 		SET status = 'REVOKED', revoked_at = CURRENT_TIMESTAMP
 		WHERE id = $1 AND user_id = $2 AND status = 'ACTIVE'
@@ -105,9 +106,9 @@ func (r *ConsentRepository) RevokeConsent(id, userID string) error {
 	return nil
 }
 
-func (r *ConsentRepository) GetActiveConsentForApp(userID, appID string) (*ConsentRecord, error) {
+func (r *ConsentRepository) GetActiveConsentForApp(ctx context.Context, userID, appID string) (*ConsentRecord, error) {
 	record := &ConsentRecord{}
-	err := r.DB.QueryRow(`
+	err := r.DB.QueryRowContext(ctx, `
 		SELECT id, user_id, app_id, scopes, purpose, status, expires_at, created_at, revoked_at
 		FROM consents
 		WHERE user_id = $1 AND app_id = $2 AND status = 'ACTIVE'

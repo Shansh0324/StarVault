@@ -18,7 +18,7 @@ func (h *AppHandler) CreateApp(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	res, err := h.AppService.CreateApp(req)
+	res, err := h.AppService.CreateApp(r.Context(), req)
 	if err != nil {
 		if err.Error() == "name is required" || err.Error() == "name is too long" {
 			sendError(w, http.StatusBadRequest, err.Error())

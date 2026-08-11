@@ -1,6 +1,7 @@
 package services
 
 import (
+	"context"
 	"starvault/core/internal/dtos"
 	"starvault/core/internal/repository"
 )
@@ -10,17 +11,17 @@ type VaultService struct {
 	EncryptSvc *EncryptionService
 }
 
-func (s *VaultService) CreateVaultData(userID string, req dtos.CreateVaultDataRequest) (*dtos.VaultDataResponse, error) {
+func (s *VaultService) CreateVaultData(ctx context.Context, userID string, req dtos.CreateVaultDataRequest) (*dtos.VaultDataResponse, error) {
 	if err := req.Validate(); err != nil {
 		return nil, err
 	}
 
-	encryptedData, err := s.EncryptSvc.Encrypt([]byte(req.Data))
+	encryptedData, err := s.EncryptSvc.Encrypt(ctx, []byte(req.Data))
 	if err != nil {
 		return nil, err // AES errors are caught before hitting DB
 	}
 
-	id, createdAt, err := s.VaultRepo.Create(userID, req.DataType, encryptedData)
+	id, createdAt, err := s.VaultRepo.Create(ctx, userID, req.DataType, encryptedData)
 	if err != nil {
 		return nil, err
 	}
@@ -32,13 +33,13 @@ func (s *VaultService) CreateVaultData(userID string, req dtos.CreateVaultDataRe
 	}, nil
 }
 
-func (s *VaultService) GetVaultData(id string, userID string) (*dtos.VaultDataResponse, error) {
-	record, err := s.VaultRepo.GetByIDAndUserID(id, userID)
+func (s *VaultService) GetVaultData(ctx context.Context, id string, userID string) (*dtos.VaultDataResponse, error) {
+	record, err := s.VaultRepo.GetByIDAndUserID(ctx, id, userID)
 	if err != nil {
 		return nil, err // Returns "record not found" on IDOR attempt
 	}
 
-	plaintext, err := s.EncryptSvc.Decrypt(record.EncryptedPayload)
+	plaintext, err := s.EncryptSvc.Decrypt(ctx, record.EncryptedPayload)
 	if err != nil {
 		return nil, err
 	}

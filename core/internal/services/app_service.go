@@ -1,6 +1,7 @@
 package services
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/base64"
 	"errors"
@@ -13,7 +14,7 @@ type AppService struct {
 	AppRepo *repository.AppRepository
 }
 
-func (s *AppService) CreateApp(req dtos.CreateAppRequest) (*dtos.CreateAppResponse, error) {
+func (s *AppService) CreateApp(ctx context.Context, req dtos.CreateAppRequest) (*dtos.CreateAppResponse, error) {
 	if err := req.Validate(); err != nil {
 		return nil, err
 	}
@@ -34,7 +35,7 @@ func (s *AppService) CreateApp(req dtos.CreateAppRequest) (*dtos.CreateAppRespon
 	}
 
 	// Store only the hash
-	appID, err := s.AppRepo.CreateApp(req.Name, string(hash))
+	appID, err := s.AppRepo.CreateApp(ctx, req.Name, string(hash))
 	if err != nil {
 		return nil, err
 	}

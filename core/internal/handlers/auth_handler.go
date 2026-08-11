@@ -24,7 +24,7 @@ func (h *AuthHandler) CreateUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	id, err := h.AuthService.Register(req)
+	id, err := h.AuthService.Register(r.Context(), req)
 	if err != nil {
 		if err.Error() == "Email and password are required" {
 			sendError(w, http.StatusBadRequest, err.Error())
@@ -49,7 +49,7 @@ func (h *AuthHandler) VerifyUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	id, err := h.AuthService.Login(req)
+	id, err := h.AuthService.Login(r.Context(), req)
 	if err != nil {
 		if err.Error() == "Invalid email or password" {
 			sendError(w, http.StatusUnauthorized, err.Error())

@@ -1,7 +1,6 @@
 const jwt = require('jsonwebtoken');
 const AuthDTO = require('../dtos/auth.dto');
-
-const CORE_URL = process.env.CORE_URL || 'http://localhost:8080';
+const coreFetch = require('../utils/coreClient');
 const JWT_SECRET = process.env.JWT_SECRET || 'fallback_secret';
 
 class AuthController {
@@ -9,12 +8,10 @@ class AuthController {
         try {
             const dto = AuthDTO.validateRegister(req.body);
             
-            const response = await fetch(`${CORE_URL}/internal/users`, {
+            const { response, data } = await coreFetch(req, '/internal/users', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(dto)
             });
-            const data = await response.json();
             
             if (!response.ok) {
                 return res.status(response.status).json({ error: { message: data.error || 'Internal Error' } });
@@ -24,7 +21,8 @@ class AuthController {
             if (error.message.includes('required')) {
                 return res.status(400).json({ error: { code: 'BAD_REQUEST', message: error.message } });
             }
-            res.status(500).json({ error: { code: 'INTERNAL_ERROR', message: 'Failed to communicate with Core' } });
+            const errorMsg = error.message === 'Core request timed out' ? 'Core request timed out' : 'Failed to communicate with Core';
+            res.status(500).json({ error: { code: 'INTERNAL_ERROR', message: errorMsg } });
         }
     }
 
@@ -32,13 +30,10 @@ class AuthController {
         try {
             const dto = AuthDTO.validateLogin(req.body);
 
-            const response = await fetch(`${CORE_URL}/internal/users/verify`, {
+            const { response, data } = await coreFetch(req, '/internal/users/verify', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(dto)
             });
-            
-            const data = await response.json();
             if (!response.ok) {
                 return res.status(response.status).json({ error: { message: data.error || 'Internal Error' } });
             }
@@ -52,7 +47,8 @@ class AuthController {
             if (error.message.includes('required')) {
                 return res.status(400).json({ error: { code: 'BAD_REQUEST', message: error.message } });
             }
-            res.status(500).json({ error: { code: 'INTERNAL_ERROR', message: 'Failed to communicate with Core' } });
+            const errorMsg = error.message === 'Core request timed out' ? 'Core request timed out' : 'Failed to communicate with Core';
+            res.status(500).json({ error: { code: 'INTERNAL_ERROR', message: errorMsg } });
         }
     }
 

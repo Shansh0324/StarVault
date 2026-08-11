@@ -26,7 +26,7 @@ func (h *AccessHandler) AccessData(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	res, err := h.AccessService.AccessData(userID, req)
+	res, err := h.AccessService.AccessData(r.Context(), userID, req)
 	if err != nil {
 		if strings.Contains(err.Error(), "unauthorized") {
 			http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusUnauthorized)

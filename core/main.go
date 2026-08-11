@@ -1,12 +1,18 @@
 package main
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"log"
 	"net/http"
 	"os"
+	"os/signal"
 	"strings"
+	"syscall"
+	"time"
+	"encoding/json"
+	"sync/atomic"
 
 	_ "github.com/lib/pq"
 	"starvault/core/internal/handlers"
@@ -14,6 +20,36 @@ import (
 	"starvault/core/internal/services"
 	"encoding/hex"
 )
+
+var isShuttingDown atomic.Bool
+var httpRequestsTotal atomic.Uint64
+
+func loggingMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		reqID := r.Header.Get("X-Request-ID")
+		if reqID == "" {
+			reqID = "system"
+		}
+		
+		if r.URL.Path != "/health/live" && r.URL.Path != "/health/ready" && r.URL.Path != "/metrics" {
+			logData := map[string]string{
+				"level":     "info",
+				"service":   "core",
+				"requestId": reqID,
+				"event":     "request_started",
+				"path":      r.URL.Path,
+			}
+			b, _ := json.Marshal(logData)
+			log.Println(string(b))
+		}
+		
+		httpRequestsTotal.Add(1)
+		
+		// Put request ID in context
+		ctx := context.WithValue(r.Context(), "request_id", reqID)
+		next.ServeHTTP(w, r.WithContext(ctx))
+	})
+}
 
 // Minimal env loader for MVP to avoid extra dependencies
 func loadEnv(filename string) {
@@ -66,11 +102,21 @@ func main() {
 	dbHost := os.Getenv("POSTGRES_HOST")
 	dbPort := os.Getenv("POSTGRES_PORT")
 
+	if dbUser == "" || dbPass == "" || dbName == "" || dbHost == "" {
+		log.Fatal("POSTGRES_USER, POSTGRES_PASSWORD, POSTGRES_DB, and POSTGRES_HOST are required")
+	}
+
 	connStr := fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=disable", dbUser, dbPass, dbHost, dbPort, dbName)
 	db, err := sql.Open("postgres", connStr)
 	if err != nil {
 		log.Fatalf("Failed to open DB: %v", err)
 	}
+	
+	// Hardening: Connection Pool Limits
+	db.SetMaxOpenConns(25)
+	db.SetMaxIdleConns(25)
+	db.SetConnMaxLifetime(5 * time.Minute)
+
 	defer db.Close()
 
 	if err := db.Ping(); err != nil {
@@ -107,19 +153,50 @@ func main() {
 	consentSvc := &services.ConsentService{ConsentRepo: consentRepo, AppRepo: appRepo}
 	consentHandler := &handlers.ConsentHandler{ConsentService: consentSvc}
 
-	accessSvc := &services.AccessService{AppRepo: appRepo, ConsentService: consentSvc, VaultService: vaultSvc}
+	auditRepo := &repository.AuditRepository{DB: db}
+	auditSvc := &services.AuditService{AuditRepo: auditRepo}
+	auditHandler := &handlers.AuditHandler{AuditRepo: auditRepo}
+
+	accessSvc := &services.AccessService{
+		AppRepo:        appRepo,
+		ConsentService: consentSvc,
+		VaultService:   vaultSvc,
+		AuditService:   auditSvc,
+	}
 	accessHandler := &handlers.AccessHandler{AccessService: accessSvc}
 	port := os.Getenv("CORE_PORT")
 	if port == "" {
 		port = "8080"
 	}
 
-	http.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+	mux := http.NewServeMux()
+
+	mux.HandleFunc("/health/live", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("Core is healthy"))
+		w.Write([]byte(`{"status":"Core is alive"}`))
 	})
 
-	http.HandleFunc("/internal/users", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/health/ready", func(w http.ResponseWriter, r *http.Request) {
+		if isShuttingDown.Load() {
+			http.Error(w, `{"status":"Shutting down"}`, http.StatusServiceUnavailable)
+			return
+		}
+		if err := db.PingContext(r.Context()); err != nil {
+			http.Error(w, `{"status":"Database down"}`, http.StatusServiceUnavailable)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"status":"Core is ready"}`))
+	})
+
+	mux.HandleFunc("/metrics", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/plain")
+		fmt.Fprintf(w, "# HELP http_requests_total Total HTTP requests\n")
+		fmt.Fprintf(w, "# TYPE http_requests_total counter\n")
+		fmt.Fprintf(w, "http_requests_total{service=\"core\"} %d\n", httpRequestsTotal.Load())
+	})
+
+	mux.HandleFunc("/internal/users", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodPost {
 			authHandler.CreateUser(w, r)
 		} else {
@@ -127,7 +204,7 @@ func main() {
 		}
 	})
 
-	http.HandleFunc("/internal/users/verify", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/internal/users/verify", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodPost {
 			authHandler.VerifyUser(w, r)
 		} else {
@@ -135,7 +212,7 @@ func main() {
 		}
 	})
 
-	http.HandleFunc("/internal/vault/data", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/internal/vault/data", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodPost {
 			vaultHandler.CreateVaultData(w, r)
 		} else {
@@ -143,7 +220,7 @@ func main() {
 		}
 	})
 
-	http.HandleFunc("/internal/vault/data/", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/internal/vault/data/", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodGet {
 			vaultHandler.GetVaultData(w, r)
 		} else {
@@ -151,7 +228,7 @@ func main() {
 		}
 	})
 
-	http.HandleFunc("/internal/apps", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/internal/apps", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodPost {
 			appHandler.CreateApp(w, r)
 		} else {
@@ -159,7 +236,7 @@ func main() {
 		}
 	})
 
-	http.HandleFunc("/internal/consents", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/internal/consents", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodPost {
 			consentHandler.CreateConsent(w, r)
 		} else if r.Method == http.MethodGet {
@@ -169,7 +246,7 @@ func main() {
 		}
 	})
 
-	http.HandleFunc("/internal/consents/check", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/internal/consents/check", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodPost {
 			consentHandler.CheckConsent(w, r)
 		} else {
@@ -177,7 +254,7 @@ func main() {
 		}
 	})
 
-	http.HandleFunc("/internal/consents/", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/internal/consents/", func(w http.ResponseWriter, r *http.Request) {
 		// Basic manual routing: /internal/consents/{id} OR /internal/consents/{id}/revoke
 		path := r.URL.Path
 		if r.Method == http.MethodGet {
@@ -189,7 +266,7 @@ func main() {
 		}
 	})
 
-	http.HandleFunc("/internal/access/data", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/internal/access/data", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodPost {
 			accessHandler.AccessData(w, r)
 		} else {
@@ -197,8 +274,48 @@ func main() {
 		}
 	})
 
-	log.Printf("Core Service starting on port %s...", port)
-	if err := http.ListenAndServe(":"+port, nil); err != nil {
-		log.Fatalf("Server failed: %v", err)
+	mux.HandleFunc("/internal/audits/latest", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet {
+			auditHandler.GetLatestAudit(w, r)
+		} else {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		}
+	})
+
+	// Start asynchronous audit worker with context
+	workerCtx, workerCancel := context.WithCancel(context.Background())
+	go auditSvc.StartAuditWorker(workerCtx)
+
+	srv := &http.Server{
+		Addr:         ":" + port,
+		Handler:      loggingMiddleware(mux),
+		ReadTimeout:  10 * time.Second,
+		WriteTimeout: 10 * time.Second,
 	}
+
+	go func() {
+		log.Printf("Core Service starting on port %s...", port)
+		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Fatalf("Server failed: %v", err)
+		}
+	}()
+
+	// Graceful shutdown
+	stop := make(chan os.Signal, 1)
+	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
+	<-stop
+
+	log.Println("Core shutting down gracefully...")
+	isShuttingDown.Store(true)
+
+	workerCancel() // stop background worker
+
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer shutdownCancel()
+
+	if err := srv.Shutdown(shutdownCtx); err != nil {
+		log.Fatalf("Core Server Shutdown Failed: %+v", err)
+	}
+
+	log.Println("Core exited cleanly")
 }
