@@ -18,6 +18,7 @@ import (
 	"starvault/core/internal/handlers"
 	"starvault/core/internal/repository"
 	"starvault/core/internal/services"
+	"starvault/core/internal/blockchain"
 	"encoding/hex"
 )
 
@@ -150,7 +151,28 @@ func main() {
 	consentRepo := &repository.ConsentRepository{DB: db}
 	auditRepo := &repository.AuditRepository{DB: db}
 
-	auditService := &services.AuditService{AuditRepo: auditRepo}
+	// Blockchain Client Initialization
+	rpcURL := os.Getenv("BLOCKCHAIN_RPC_URL")
+	privKey := os.Getenv("BLOCKCHAIN_PRIVATE_KEY")
+	contractAddr := os.Getenv("SMART_CONTRACT_ADDRESS")
+	
+	var bcClient *blockchain.Client
+	if rpcURL != "" && privKey != "" && contractAddr != "" {
+		client, err := blockchain.NewClient(rpcURL, privKey, contractAddr)
+		if err != nil {
+			log.Printf("WARNING: Failed to initialize Blockchain client: %v", err)
+		} else {
+			bcClient = client
+			log.Println("Blockchain integration enabled.")
+		}
+	} else {
+		log.Println("Blockchain integration disabled (missing env vars).")
+	}
+
+	auditService := &services.AuditService{
+		AuditRepo:        auditRepo,
+		BlockchainClient: bcClient,
+	}
 	encryptSvc, err := services.NewEncryptionService(masterKey)
 	if err != nil {
 		log.Fatalf("Failed to initialize encryption service: %v", err)

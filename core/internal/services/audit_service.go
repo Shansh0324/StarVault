@@ -6,12 +6,14 @@ import (
 	"encoding/hex"
 	"fmt"
 	"log"
+	"starvault/core/internal/blockchain"
 	"starvault/core/internal/repository"
 	"time"
 )
 
 type AuditService struct {
-	AuditRepo *repository.AuditRepository
+	AuditRepo        *repository.AuditRepository
+	BlockchainClient *blockchain.Client
 }
 
 // LogAccessAttempt logs the access attempt synchronously to the durable queue (PostgreSQL).
@@ -68,10 +70,20 @@ func (s *AuditService) processPendingAudits(ctx context.Context) {
 		h.Write([]byte(payload))
 		newHash := hex.EncodeToString(h.Sum(nil))
 
-		// Commit
+		// Anchor to Blockchain if configured
+		if s.BlockchainClient != nil {
+			txHash, err := s.BlockchainClient.AnchorHash(ctx, l.ID, newHash)
+			if err != nil {
+				log.Printf("AuditWorker: Blockchain anchor failed for %s (will retry): %v", l.ID, err)
+				continue // Skip local commit to trigger retry on next tick
+			}
+			log.Printf("AuditWorker: Anchored on-chain. TxHash: %s", txHash)
+		}
+
+		// Commit locally
 		err = s.AuditRepo.Commit(ctx, l.ID, newHash)
 		if err != nil {
-			log.Printf("AuditWorker: Error committing hash for %s: %v", l.ID, err)
+			log.Printf("AuditWorker: Error committing hash for %s locally: %v", l.ID, err)
 			continue
 		}
 

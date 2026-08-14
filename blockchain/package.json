@@ -1,0 +1,14 @@
+{
+  "name": "starvault-blockchain",
+  "version": "1.0.0",
+  "description": "Smart contracts and deployment scripts for StarVault",
+  "main": "deploy.js",
+  "scripts": {
+    "deploy": "node deploy.js"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.5",
+    "ethers": "^6.11.1",
+    "solc": "0.8.20"
+  }
+}
