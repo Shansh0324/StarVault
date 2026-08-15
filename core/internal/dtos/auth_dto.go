@@ -7,7 +7,9 @@ import (
 
 type AuthRequest struct {
 	Email    string `json:"email"`
-	Password string `json:"password"`
+	Password  string `json:"password"`
+	IPAddress string `json:"ipAddress,omitempty"`
+	UserAgent string `json:"userAgent,omitempty"`
 }
 
 func (r *AuthRequest) Validate() error {

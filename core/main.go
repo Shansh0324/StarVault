@@ -133,8 +133,6 @@ func main() {
 	log.Println("Core Service connected to PostgreSQL successfully.")
 
 	userRepo := &repository.UserRepository{DB: db}
-	authSvc := &services.AuthService{UserRepo: userRepo}
-	authHandler := &handlers.AuthHandler{AuthService: authSvc}
 
 	// Vault dependencies
 	masterKeyHex := os.Getenv("STARVAULT_MASTER_KEY")
@@ -235,13 +233,26 @@ func main() {
 		AuditService:   auditService,
 		TokenRepo:      tokenRepo,
 	}
-	
+	riskService := &services.RiskService{DB: db}
+
+	authService := &services.AuthService{
+		UserRepo:    userRepo,
+		RiskService: riskService,
+	}
+
+	webAuthnService, err := services.NewWebAuthnService(db)
+	if err != nil {
+		log.Printf("WARNING: WebAuthn initialization failed: %v", err)
+	}
+
+	authHandler := &handlers.AuthHandler{AuthService: authService}
 	vaultHandler := &handlers.VaultHandler{VaultService: vaultService}
 	appHandler := &handlers.AppHandler{AppService: appService}
 	consentHandler := &handlers.ConsentHandler{ConsentService: consentService}
 	auditHandler := &handlers.AuditHandler{AuditRepo: auditRepo}
 	accessHandler := &handlers.AccessHandler{AccessService: accessService}
 	tokenHandler := &handlers.TokenHandler{TokenService: tokenService}
+	webAuthnHandler := &handlers.WebAuthnHandler{WebAuthnService: webAuthnService}
 
 	port := os.Getenv("CORE_PORT")
 	if port == "" {
@@ -273,6 +284,54 @@ func main() {
 		fmt.Fprintf(w, "# HELP http_requests_total Total HTTP requests\n")
 		fmt.Fprintf(w, "# TYPE http_requests_total counter\n")
 		fmt.Fprintf(w, "http_requests_total{service=\"core\"} %d\n", httpRequestsTotal.Load())
+	})
+
+	mux.HandleFunc("/internal/auth/register", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost {
+			authHandler.CreateUser(w, r)
+		} else {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		}
+	})
+
+	mux.HandleFunc("/internal/auth/login", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost {
+			authHandler.VerifyUser(w, r)
+		} else {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		}
+	})
+
+	mux.HandleFunc("/internal/auth/webauthn/register/begin", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet {
+			webAuthnHandler.RegisterBegin(w, r)
+		} else {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		}
+	})
+
+	mux.HandleFunc("/internal/auth/webauthn/register/finish", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost {
+			webAuthnHandler.RegisterFinish(w, r)
+		} else {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		}
+	})
+
+	mux.HandleFunc("/internal/auth/webauthn/login/begin", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet {
+			webAuthnHandler.LoginBegin(w, r)
+		} else {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		}
+	})
+
+	mux.HandleFunc("/internal/auth/webauthn/login/finish", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost {
+			webAuthnHandler.LoginFinish(w, r)
+		} else {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		}
 	})
 
 	mux.HandleFunc("/internal/users", func(w http.ResponseWriter, r *http.Request) {

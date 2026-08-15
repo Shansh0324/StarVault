@@ -3,6 +3,8 @@ package services
 import (
 	"context"
 	"errors"
+	"fmt"
+	"log"
 	"strings"
 	"starvault/core/internal/dtos"
 	"starvault/core/internal/repository"
@@ -11,7 +13,8 @@ import (
 )
 
 type AuthService struct {
-	UserRepo *repository.UserRepository
+	UserRepo    *repository.UserRepository
+	RiskService *RiskService
 }
 
 func (s *AuthService) Register(ctx context.Context, req dtos.AuthRequest) (string, error) {
@@ -31,6 +34,14 @@ func (s *AuthService) Register(ctx context.Context, req dtos.AuthRequest) (strin
 		}
 		return "", err
 	}
+
+	// Generate and set DID
+	did := fmt.Sprintf("did:starvault:%s", id)
+	err = s.UserRepo.SetDID(ctx, id, did)
+	if err != nil {
+		log.Printf("Failed to set DID for user %s: %v", id, err)
+	}
+
 	return id, nil
 }
 
@@ -46,6 +57,21 @@ func (s *AuthService) Login(ctx context.Context, req dtos.AuthRequest) (string, 
 
 	if err := bcrypt.CompareHashAndPassword([]byte(dbHash), []byte(req.Password)); err != nil {
 		return "", errors.New("Invalid email or password")
+	}
+
+	// Evaluate Device Posture / Risk Score
+	if s.RiskService != nil {
+		posture := DevicePosture{
+			IPAddress: req.IPAddress,
+			UserAgent: req.UserAgent,
+		}
+		riskScore, err := s.RiskService.EvaluateLogin(ctx, dbID, posture)
+		if err != nil {
+			log.Printf("RiskService error for user %s: %v", dbID, err)
+		} else if riskScore >= RiskLevelHigh {
+			log.Printf("HIGH RISK LOGIN for user %s from IP %s", dbID, req.IPAddress)
+			// For now, we only log it. We don't block access yet to avoid locking users out.
+		}
 	}
 
 	return dbID, nil

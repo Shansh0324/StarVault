@@ -90,11 +90,11 @@ func (s *TokenService) RevokeToken(ctx context.Context, userID, rawToken string)
 	// Try to revoke (enforces ownership inside repo)
 	err := s.TokenRepo.RevokeToken(ctx, tokenHash, userID)
 	if err != nil {
-		// Log attempt anyway if possible (we don't have AppID, use "unknown")
-		s.AuditService.LogAccessAttempt(ctx, userID, "unknown", "TOKEN_REVOKE_FAILED", "")
+		// Log attempt anyway if possible (we don't have AppID, use "")
+		s.AuditService.LogAccessAttempt(ctx, userID, "", "TOKEN_REVOKE_FAILED", "")
 		return errors.New("forbidden or invalid token")
 	}
 
-	s.AuditService.LogAccessAttempt(ctx, userID, "unknown", "TOKEN_REVOKED", "")
+	s.AuditService.LogAccessAttempt(ctx, userID, "", "TOKEN_REVOKED", "")
 	return nil
 }
