@@ -38,13 +38,21 @@ describe('Consent Manager Endpoints', () => {
         expect(res.statusCode).toBe(400);
     });
 
-    it('should allow User A to create consent', async () => {
-        const res = await apiClient.post('/api/v1/consents', { appId, scopes: ['email', 'profile'], purpose: 'Test Personalization', expiresAt: '2050-01-01T00:00:00Z' }, tokenA);
+    it('should allow User A to create consent with policies', async () => {
+        const res = await apiClient.post('/api/v1/consents', { 
+            appId, 
+            scopes: ['email', 'profile'], 
+            purpose: 'Test Personalization', 
+            expiresAt: '2050-01-01T00:00:00Z',
+            policies: { "time_of_day": "00:00-23:59" } 
+        }, tokenA);
         
         expect(res.statusCode).toBe(201);
         expect(res.body).toHaveProperty('consentId');
         expect(res.body.scopes).toContain('email');
         expect(res.body.status).toBe('ACTIVE');
+        expect(res.body.policies).toBeDefined();
+        expect(res.body.policies.time_of_day).toBe('00:00-23:59');
         consentId = res.body.consentId;
     });
 

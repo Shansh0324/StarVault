@@ -206,32 +206,44 @@ func main() {
 		BatchInterval:    60 * time.Second,
 		BatchMaxSize:     1000,
 	}
+
+	notificationService := &services.NotificationService{
+		JetStream: js,
+	}
+
 	encryptSvc, err := services.NewEncryptionService(masterKey)
 	if err != nil {
 		log.Fatalf("Failed to initialize encryption service: %v", err)
 	}
 
-	appService := &services.AppService{AppRepo: appRepo}
+	appService := &services.AppService{
+		AppRepo: appRepo,
+	}
+
 	consentService := &services.ConsentService{
 		ConsentRepo:  consentRepo,
 		AppRepo:      appRepo,
 	}
+
 	tokenService := &services.TokenService{
 		TokenRepo:      tokenRepo,
 		AppRepo:        appRepo,
 		ConsentService: consentService,
 		AuditService:   auditService,
 	}
+
 	vaultService := &services.VaultService{
 		VaultRepo:  vaultRepo,
 		EncryptSvc: encryptSvc,
 	}
+
 	accessService := &services.AccessService{
-		AppRepo:        appRepo,
-		ConsentService: consentService,
-		VaultService:   vaultService,
-		AuditService:   auditService,
-		TokenRepo:      tokenRepo,
+		AppRepo:             appRepo,
+		ConsentService:      consentService,
+		VaultService:        vaultService,
+		AuditService:        auditService,
+		TokenRepo:           tokenRepo,
+		NotificationService: notificationService,
 	}
 	riskService := &services.RiskService{DB: db}
 

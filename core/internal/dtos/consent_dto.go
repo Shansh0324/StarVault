@@ -7,10 +7,11 @@ import (
 )
 
 type CreateConsentRequest struct {
-	AppID     string   `json:"appId"`
-	Scopes    []string `json:"scopes"`
-	Purpose   string   `json:"purpose"`
-	ExpiresAt string   `json:"expiresAt"`
+	AppID     string                 `json:"appId"`
+	Scopes    []string               `json:"scopes"`
+	Purpose   string                 `json:"purpose"`
+	ExpiresAt string                 `json:"expiresAt"`
+	Policies  map[string]interface{} `json:"policies,omitempty"`
 }
 
 func (r *CreateConsentRequest) Validate() error {
@@ -52,18 +53,29 @@ func (r *CreateConsentRequest) Validate() error {
 		r.Scopes[i] = s
 	}
 
+	// Basic validation for policies
+	if r.Policies != nil {
+		if timeStr, ok := r.Policies["time_of_day"].(string); ok {
+			parts := strings.Split(timeStr, "-")
+			if len(parts) != 2 {
+				return errors.New("invalid time_of_day format, expected HH:MM-HH:MM")
+			}
+		}
+	}
+
 	return nil
 }
 
 type ConsentResponse struct {
-	ConsentID string   `json:"consentId"`
-	AppID     string   `json:"appId"`
-	Scopes    []string `json:"scopes"`
-	Purpose   string   `json:"purpose"`
-	Status    string   `json:"status"`
-	ExpiresAt string   `json:"expiresAt"`
-	CreatedAt string   `json:"createdAt"`
-	RevokedAt *string  `json:"revokedAt,omitempty"`
+	ConsentID string                 `json:"consentId"`
+	AppID     string                 `json:"appId"`
+	Scopes    []string               `json:"scopes"`
+	Purpose   string                 `json:"purpose"`
+	Status    string                 `json:"status"`
+	ExpiresAt string                 `json:"expiresAt"`
+	CreatedAt string                 `json:"createdAt"`
+	RevokedAt *string                `json:"revokedAt,omitempty"`
+	Policies  map[string]interface{} `json:"policies,omitempty"`
 }
 
 type CheckConsentRequest struct {

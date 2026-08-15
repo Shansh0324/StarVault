@@ -17,7 +17,7 @@ class ConsentController {
             });
             
             if (!response.ok) {
-                return res.status(response.status).json({ error: { message: data.error || 'Internal Error' } });
+                return res.status(response.status).json({ error: { message: data?.error || 'Internal Error' } });
             }
             res.status(response.status).json(data);
         } catch (error) {

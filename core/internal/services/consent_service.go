@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strconv"
+	"strings"
 	"time"
 
 	"starvault/core/internal/dtos"
@@ -43,9 +45,19 @@ func (s *ConsentService) CreateConsent(ctx context.Context, userID string, req d
 		return nil, errors.New("failed to serialize scopes")
 	}
 
+	var policiesJSON []byte
+	if req.Policies == nil {
+		policiesJSON = []byte("{}")
+	} else {
+		policiesJSON, err = json.Marshal(req.Policies)
+		if err != nil {
+			return nil, errors.New("failed to serialize policies")
+		}
+	}
+
 	expiresAt, _ := time.Parse(time.RFC3339, req.ExpiresAt)
 
-	id, createdAt, err := s.ConsentRepo.CreateConsent(ctx, userID, req.AppID, string(scopesJSON), req.Purpose, expiresAt)
+	id, createdAt, err := s.ConsentRepo.CreateConsent(ctx, userID, req.AppID, string(scopesJSON), req.Purpose, string(policiesJSON), expiresAt)
 	if err != nil {
 		return nil, err
 	}
@@ -58,6 +70,7 @@ func (s *ConsentService) CreateConsent(ctx context.Context, userID string, req d
 		Status:    "ACTIVE",
 		ExpiresAt: expiresAt.Format(time.RFC3339),
 		CreatedAt: createdAt.Format(time.RFC3339),
+		Policies:  req.Policies,
 	}, nil
 }
 
@@ -106,6 +119,36 @@ func (s *ConsentService) CheckConsent(ctx context.Context, req dtos.CheckConsent
 		return &dtos.CheckConsentResponse{Allowed: false}, nil
 	}
 
+	var policies map[string]interface{}
+	if record.Policies != "" {
+		if err := json.Unmarshal([]byte(record.Policies), &policies); err == nil {
+			if timeStr, ok := policies["time_of_day"].(string); ok {
+				// Evaluate time_of_day
+				parts := strings.Split(timeStr, "-")
+				if len(parts) == 2 {
+					now := time.Now().UTC()
+					startParts := strings.Split(parts[0], ":")
+					endParts := strings.Split(parts[1], ":")
+					
+					if len(startParts) == 2 && len(endParts) == 2 {
+						startH, _ := strconv.Atoi(startParts[0])
+						startM, _ := strconv.Atoi(startParts[1])
+						endH, _ := strconv.Atoi(endParts[0])
+						endM, _ := strconv.Atoi(endParts[1])
+						
+						currentMins := now.Hour()*60 + now.Minute()
+						startMins := startH*60 + startM
+						endMins := endH*60 + endM
+						
+						if currentMins < startMins || currentMins > endMins {
+							return &dtos.CheckConsentResponse{Allowed: false}, nil
+						}
+					}
+				}
+			}
+		}
+	}
+
 	// Exact scope match
 	for _, grantedScope := range scopes {
 		if grantedScope == req.Scope {
@@ -119,6 +162,11 @@ func (s *ConsentService) CheckConsent(ctx context.Context, req dtos.CheckConsent
 func (s *ConsentService) mapToDTO(record *repository.ConsentRecord) *dtos.ConsentResponse {
 	var scopes []string
 	json.Unmarshal([]byte(record.Scopes), &scopes)
+
+	var policies map[string]interface{}
+	if record.Policies != "" {
+		json.Unmarshal([]byte(record.Policies), &policies)
+	}
 
 	status := record.Status
 	// Read-time expiration evaluation
@@ -134,6 +182,7 @@ func (s *ConsentService) mapToDTO(record *repository.ConsentRecord) *dtos.Consen
 		Status:    status,
 		ExpiresAt: record.ExpiresAt.Format(time.RFC3339),
 		CreatedAt: record.CreatedAt.Format(time.RFC3339),
+		Policies:  policies,
 	}
 	if record.RevokedAt.Valid {
 		rAt := record.RevokedAt.Time.Format(time.RFC3339)

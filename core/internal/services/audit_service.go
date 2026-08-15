@@ -34,6 +34,16 @@ type AuditEvent struct {
 
 // LogAccessAttempt publishes the access attempt to NATS JetStream.
 func (s *AuditService) LogAccessAttempt(ctx context.Context, userID, appID, action, scope string) {
+	// Validate UUIDs before publishing -- the audit_logs table requires valid uuid values.
+	if _, err := uuid.Parse(userID); err != nil {
+		log.Printf("AuditService: skipping audit for non-UUID userID=%q action=%s", userID, action)
+		return
+	}
+	if _, err := uuid.Parse(appID); err != nil {
+		log.Printf("AuditService: skipping audit for non-UUID appID=%q action=%s", appID, action)
+		return
+	}
+
 	event := AuditEvent{
 		ID:        uuid.New().String(),
 		UserID:    userID,

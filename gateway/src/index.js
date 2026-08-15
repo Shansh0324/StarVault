@@ -19,6 +19,8 @@ const appRoutes = require('./routes/app.routes');
 const consentRoutes = require('./routes/consent.routes');
 const accessRoutes = require('./routes/access.routes');
 const tokenRoutes = require('./routes/token.routes');
+const notificationRoutes = require('./routes/notification.routes');
+const natsClient = require('./utils/natsClient');
 const app = express();
 
 // Security Headers
@@ -70,30 +72,34 @@ app.use('/api/v1/apps', standardLimit, appRoutes);
 app.use('/api/v1/consents', consentRoutes);
 app.use('/api/v1/access', standardLimit, accessRoutes);
 app.use('/api/v1/oauth', standardLimit, tokenRoutes);
+app.use('/api/v1/notifications', standardLimit, notificationRoutes);
 
 if (require.main === module) {
-    const server = app.listen(PORT, () => {
-        logger.info('startup_complete', null, { port: PORT });
-    });
-
-    const shutdown = () => {
-        logger.info('shutdown_initiated');
-        isShuttingDown = true;
-        
-        // Give ongoing requests 5 seconds to finish
-        setTimeout(() => {
-            logger.error('shutdown_forced');
-            process.exit(1);
-        }, 5000);
-
-        server.close(() => {
-            logger.info('shutdown_complete');
-            process.exit(0);
+    natsClient.connect().then(() => {
+        const server = app.listen(PORT, () => {
+            logger.info('startup_complete', null, { port: PORT });
         });
-    };
 
-    process.on('SIGTERM', shutdown);
-    process.on('SIGINT', shutdown);
+        const shutdown = () => {
+            logger.info('shutdown_initiated');
+            isShuttingDown = true;
+            
+            // Give ongoing requests 5 seconds to finish
+            setTimeout(() => {
+                logger.error('shutdown_forced');
+                process.exit(1);
+            }, 5000);
+
+            server.close(async () => {
+                await natsClient.close();
+                logger.info('shutdown_complete');
+                process.exit(0);
+            });
+        };
+
+        process.on('SIGTERM', shutdown);
+        process.on('SIGINT', shutdown);
+    });
 }
 
 module.exports = app;

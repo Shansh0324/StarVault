@@ -50,3 +50,10 @@ Thumbs.db
 *.pfx
 *secret*
 !*secret*.md
+
+# Data volumes
+postgres_data/
+nats_data/
+
+# Test logs
+gateway/*.log

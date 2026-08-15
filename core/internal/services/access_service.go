@@ -16,11 +16,12 @@ import (
 )
 
 type AccessService struct {
-	AppRepo        *repository.AppRepository
-	ConsentService *ConsentService
-	VaultService   *VaultService
-	AuditService   *AuditService
-	TokenRepo      *repository.TokenRepository
+	AppRepo             *repository.AppRepository
+	ConsentService      *ConsentService
+	VaultService        *VaultService
+	AuditService        *AuditService
+	TokenRepo           *repository.TokenRepository
+	NotificationService *NotificationService
 }
 
 func (s *AccessService) AccessData(ctx context.Context, userID string, req dtos.AccessDataRequest) (*dtos.VaultDataResponse, error) {
@@ -71,6 +72,9 @@ func (s *AccessService) AccessData(ctx context.Context, userID string, req dtos.
 	}
 
 	s.AuditService.LogAccessAttempt(ctx, userID, req.AppID, "ACCESS_GRANTED", req.Scope)
+	if s.NotificationService != nil {
+		s.NotificationService.PublishAccessEvent(ctx, userID, req.AppID, "ACCESS_GRANTED", req.Scope)
+	}
 	return vaultData, nil
 }
 
@@ -139,6 +143,9 @@ func (s *AccessService) AccessDataWithToken(ctx context.Context, rawToken string
 	}
 
 	s.AuditService.LogAccessAttempt(ctx, userID, appID, "ACCESS_GRANTED_WITH_TOKEN", req.Scope)
+	if s.NotificationService != nil {
+		s.NotificationService.PublishAccessEvent(ctx, userID, appID, "ACCESS_GRANTED_WITH_TOKEN", req.Scope)
+	}
 	return vaultData, nil
 }
 

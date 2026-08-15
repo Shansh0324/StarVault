@@ -70,4 +70,20 @@ describe('Access Gateway Endpoints', () => {
         const res = await apiClient.post('/api/v1/access/data', { appId, secret: appSecret, scope: 'medical_data', vaultDataId }, tokenA);
         expect(res.statusCode).toBe(403);
     });
+
+    it('should block access if time_of_day policy is violated', async () => {
+        // Create Consent with impossible time_of_day
+        const consentRes = await apiClient.post('/api/v1/consents', { 
+            appId, 
+            scopes: ['medical_data'], 
+            purpose: 'Test policy', 
+            expiresAt: '2050-01-01T00:00:00Z',
+            policies: { "time_of_day": "00:00-00:01" } // highly unlikely to be running in this minute
+        }, tokenA);
+        
+        expect(consentRes.statusCode).toBe(201);
+        
+        const res = await apiClient.post('/api/v1/access/data', { appId, secret: appSecret, scope: 'medical_data', vaultDataId }, tokenA);
+        expect(res.statusCode).toBe(403); // Blocked by policy
+    });
 });

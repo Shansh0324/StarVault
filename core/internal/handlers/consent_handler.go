@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"encoding/json"
+	"log"
 	"net/http"
 	"strings"
 	"starvault/core/internal/dtos"
@@ -27,6 +28,7 @@ func (h *ConsentHandler) CreateConsent(w http.ResponseWriter, r *http.Request) {
 
 	res, err := h.ConsentService.CreateConsent(r.Context(), userID, req)
 	if err != nil {
+		log.Printf("ERROR in CreateConsent: %v", err)
 		if strings.Contains(err.Error(), "required") || strings.Contains(err.Error(), "unsupported") || strings.Contains(err.Error(), "duplicate") || strings.Contains(err.Error(), "future") {
 			sendError(w, http.StatusBadRequest, err.Error())
 		} else if strings.Contains(err.Error(), "invalid app_id") {
@@ -37,8 +39,8 @@ func (h *ConsentHandler) CreateConsent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.WriteHeader(http.StatusCreated)
 	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
 	json.NewEncoder(w).Encode(res)
 }
 
@@ -54,6 +56,7 @@ func (h *ConsentHandler) GetConsent(w http.ResponseWriter, r *http.Request) {
 
 	res, err := h.ConsentService.GetConsent(r.Context(), id, userID)
 	if err != nil {
+		log.Printf("ERROR in GetConsent: %v", err)
 		sendError(w, http.StatusNotFound, "Consent not found")
 		return
 	}

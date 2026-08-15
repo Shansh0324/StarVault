@@ -18,7 +18,8 @@ class ConsentDTO {
             appId: body.appId.trim(),
             scopes: body.scopes,
             purpose: body.purpose.trim(),
-            expiresAt: body.expiresAt.trim()
+            expiresAt: body.expiresAt.trim(),
+            policies: body.policies || {}
         };
     }
 }
