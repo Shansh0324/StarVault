@@ -76,3 +76,14 @@ func (s *AuthService) Login(ctx context.Context, req dtos.AuthRequest) (string, 
 
 	return dbID, nil
 }
+
+func (s *AuthService) UpdateKey(ctx context.Context, userID string, key string) error {
+	if len(key) != 64 {
+		return errors.New("key must be a 64-character hex string")
+	}
+	return s.UserRepo.UpdateUserKey(ctx, userID, key)
+}
+
+func (s *AuthService) RevokeKey(ctx context.Context, userID string) error {
+	return s.UserRepo.DeleteUserKey(ctx, userID)
+}

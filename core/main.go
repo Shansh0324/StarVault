@@ -234,6 +234,7 @@ func main() {
 
 	vaultService := &services.VaultService{
 		VaultRepo:  vaultRepo,
+		UserRepo:   userRepo,
 		EncryptSvc: encryptSvc,
 	}
 
@@ -357,6 +358,16 @@ func main() {
 	mux.HandleFunc("/internal/users/verify", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodPost {
 			authHandler.VerifyUser(w, r)
+		} else {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		}
+	})
+
+	mux.HandleFunc("/internal/users/key", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPut {
+			authHandler.UpdateKey(w, r)
+		} else if r.Method == http.MethodDelete {
+			authHandler.RevokeKey(w, r)
 		} else {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		}

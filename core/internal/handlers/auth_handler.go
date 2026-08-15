@@ -63,3 +63,43 @@ func (h *AuthHandler) VerifyUser(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(dtos.AuthResponse{UserID: id})
 }
+
+// PUT /internal/users/key
+func (h *AuthHandler) UpdateKey(w http.ResponseWriter, r *http.Request) {
+	userID := r.Header.Get("X-User-ID")
+	if userID == "" {
+		sendError(w, http.StatusUnauthorized, "Missing X-User-ID header")
+		return
+	}
+
+	var req struct {
+		Key string `json:"key"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		sendError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	if err := h.AuthService.UpdateKey(r.Context(), userID, req.Key); err != nil {
+		sendError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+}
+
+// DELETE /internal/users/key
+func (h *AuthHandler) RevokeKey(w http.ResponseWriter, r *http.Request) {
+	userID := r.Header.Get("X-User-ID")
+	if userID == "" {
+		sendError(w, http.StatusUnauthorized, "Missing X-User-ID header")
+		return
+	}
+
+	if err := h.AuthService.RevokeKey(r.Context(), userID); err != nil {
+		sendError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+}

@@ -28,19 +28,29 @@ func (r *UserRepository) GetUserByEmail(ctx context.Context, email string) (stri
 	return dbID, dbHash, nil
 }
 
-func (r *UserRepository) GetUserByID(ctx context.Context, id string) (string, string, error) {
-	var email, did sql.NullString
-	err := r.DB.QueryRowContext(ctx, "SELECT email, did FROM users WHERE id = $1", id).Scan(&email, &did)
+func (r *UserRepository) GetUserByID(ctx context.Context, id string) (string, string, string, error) {
+	var email, did, userKey sql.NullString
+	err := r.DB.QueryRowContext(ctx, "SELECT email, did, user_key FROM users WHERE id = $1", id).Scan(&email, &did, &userKey)
 	if err != nil {
 		if err == sql.ErrNoRows {
-			return "", "", errors.New("user not found")
+			return "", "", "", errors.New("user not found")
 		}
-		return "", "", err
+		return "", "", "", err
 	}
-	return email.String, did.String, nil
+	return email.String, did.String, userKey.String, nil
 }
 
 func (r *UserRepository) SetDID(ctx context.Context, id, did string) error {
 	_, err := r.DB.ExecContext(ctx, "UPDATE users SET did = $1 WHERE id = $2", did, id)
+	return err
+}
+
+func (r *UserRepository) UpdateUserKey(ctx context.Context, id, key string) error {
+	_, err := r.DB.ExecContext(ctx, "UPDATE users SET user_key = $1 WHERE id = $2", key, id)
+	return err
+}
+
+func (r *UserRepository) DeleteUserKey(ctx context.Context, id string) error {
+	_, err := r.DB.ExecContext(ctx, "UPDATE users SET user_key = NULL WHERE id = $1", id)
 	return err
 }

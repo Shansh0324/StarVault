@@ -22,6 +22,22 @@ class ApiClient {
         return req.send();
     }
 
+    async put(path, body = {}, token = null) {
+        const req = request(this.app).put(path);
+        if (token) {
+            req.set('Authorization', `Bearer ${token}`);
+        }
+        return req.send(body);
+    }
+
+    async delete(path, token = null) {
+        const req = request(this.app).delete(path);
+        if (token) {
+            req.set('Authorization', `Bearer ${token}`);
+        }
+        return req.send();
+    }
+
     // Helper for common setup across all tests
     async setupStandardEnvironment() {
         const emailA = `userA_${Date.now()}@example.com`;

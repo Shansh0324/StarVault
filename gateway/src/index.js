@@ -20,6 +20,7 @@ const consentRoutes = require('./routes/consent.routes');
 const accessRoutes = require('./routes/access.routes');
 const tokenRoutes = require('./routes/token.routes');
 const notificationRoutes = require('./routes/notification.routes');
+const userRoutes = require('./routes/user.routes');
 const natsClient = require('./utils/natsClient');
 const app = express();
 
@@ -73,6 +74,7 @@ app.use('/api/v1/consents', consentRoutes);
 app.use('/api/v1/access', standardLimit, accessRoutes);
 app.use('/api/v1/oauth', standardLimit, tokenRoutes);
 app.use('/api/v1/notifications', standardLimit, notificationRoutes);
+app.use('/api/v1/user', standardLimit, userRoutes);
 
 if (require.main === module) {
     natsClient.connect().then(() => {
