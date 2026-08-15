@@ -1,7 +1,7 @@
 const jwt = require('jsonwebtoken');
 const AuthDTO = require('../dtos/auth.dto');
 const coreFetch = require('../utils/coreClient');
-const JWT_SECRET = process.env.JWT_SECRET || 'fallback_secret';
+const JWT_SECRET = process.env.JWT_SECRET;
 
 class AuthController {
     static async register(req, res) {

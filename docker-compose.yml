@@ -5,7 +5,7 @@ services:
     image: postgres:15-alpine
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-starvault}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-starvault_dev}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: ${POSTGRES_DB:-starvault_db}
     ports:
       - "5433:5432"
@@ -28,9 +28,20 @@ services:
     environment:
       - POSTGRES_HOST=db
       - POSTGRES_PORT=5432
+      - NATS_URL=nats://nats:4222
     depends_on:
       db:
         condition: service_healthy
+      nats:
+        condition: service_started
+
+  nats:
+    image: nats:2.10-alpine
+    command: "-js"
+    ports:
+      - "4222:4222"
+    volumes:
+      - nats_data:/data
 
   gateway:
     build: ./gateway
@@ -46,3 +57,4 @@ services:
 
 volumes:
   postgres_data:
+  nats_data:

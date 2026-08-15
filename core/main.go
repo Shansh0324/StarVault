@@ -20,6 +20,8 @@ import (
 	"starvault/core/internal/services"
 	"starvault/core/internal/blockchain"
 	"encoding/hex"
+
+	"github.com/nats-io/nats.go"
 )
 
 var isShuttingDown atomic.Bool
@@ -169,9 +171,42 @@ func main() {
 		log.Println("Blockchain integration disabled (missing env vars).")
 	}
 
+	// NATS JetStream Initialization
+	natsURL := os.Getenv("NATS_URL")
+	if natsURL == "" {
+		natsURL = nats.DefaultURL
+	}
+	nc, err := nats.Connect(natsURL)
+	if err != nil {
+		log.Fatalf("Failed to connect to NATS: %v", err)
+	}
+	defer nc.Close()
+
+	js, err := nc.JetStream()
+	if err != nil {
+		log.Fatalf("Failed to initialize JetStream: %v", err)
+	}
+	
+	// Ensure stream exists
+	_, err = js.StreamInfo("AUDIT")
+	if err != nil {
+		_, err = js.AddStream(&nats.StreamConfig{
+			Name:     "AUDIT",
+			Subjects: []string{"audit.events"},
+			Storage:  nats.FileStorage,
+		})
+		if err != nil {
+			log.Fatalf("Failed to create NATS stream: %v", err)
+		}
+	}
+	log.Println("NATS JetStream integration enabled.")
+
 	auditService := &services.AuditService{
 		AuditRepo:        auditRepo,
 		BlockchainClient: bcClient,
+		JetStream:        js,
+		BatchInterval:    60 * time.Second,
+		BatchMaxSize:     1000,
 	}
 	encryptSvc, err := services.NewEncryptionService(masterKey)
 	if err != nil {
@@ -342,9 +377,18 @@ func main() {
 		}
 	})
 
-	// Start asynchronous audit worker with context
+	mux.HandleFunc("/internal/audits/verify", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet {
+			auditHandler.VerifyAudit(w, r)
+		} else {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		}
+	})
+
+	// Start asynchronous audit + batch workers with context
 	workerCtx, workerCancel := context.WithCancel(context.Background())
 	go auditService.StartAuditWorker(workerCtx)
+	go auditService.StartBatchWorker(workerCtx)
 
 	srv := &http.Server{
 		Addr:         ":" + port,

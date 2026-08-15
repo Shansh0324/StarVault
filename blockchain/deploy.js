@@ -2,6 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const solc = require('solc');
 const { ethers } = require('ethers');
+require('dotenv').config({ path: path.resolve(__dirname, '../.env') });
 
 async function main() {
     console.log("Starting deployment...");
@@ -43,7 +44,7 @@ async function main() {
     const bytecode = contract.evm.bytecode.object;
 
     // Connect to blockchain
-    const rpcUrl = process.env.BLOCKCHAIN_RPC_URL || 'https://volta-rpc.energyweb.org';
+    const rpcUrl = process.env.BLOCKCHAIN_RPC_URL || 'https://ethereum-sepolia-rpc.publicnode.com';
     const privateKey = process.env.BLOCKCHAIN_PRIVATE_KEY;
 
     if (!privateKey) {
@@ -66,7 +67,7 @@ async function main() {
         const address = await deployedContract.getAddress();
         
         console.log(`\n==============================================`);
-        console.log(`✅ StarVaultLedger deployed to: ${address}`);
+        console.log(`[OK] StarVaultLedger deployed to: ${address}`);
         console.log(`==============================================\n`);
         console.log(`Please update SMART_CONTRACT_ADDRESS in your .env file with this address.`);
     } catch (err) {

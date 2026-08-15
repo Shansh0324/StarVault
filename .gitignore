@@ -34,3 +34,19 @@ Thumbs.db
 *.njsproj
 *.sln
 *.sw?
+
+# Database Backups and Data
+*.sql
+!db/migrations/*.sql
+*.dump
+*.sqlite
+*.sqlite3
+
+# Secrets and Keys
+*.pem
+*.key
+*.cert
+*.p12
+*.pfx
+*secret*
+!*secret*.md
