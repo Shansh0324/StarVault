@@ -55,5 +55,5 @@ Thumbs.db
 postgres_data/
 nats_data/
 
-# Test logs
-gateway/*.log
+# Logs
+*.log
