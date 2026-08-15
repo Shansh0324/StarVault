@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -15,6 +16,7 @@ import (
 	"sync/atomic"
 
 	_ "github.com/lib/pq"
+	"starvault/core/internal/cache"
 	"starvault/core/internal/handlers"
 	"starvault/core/internal/repository"
 	"starvault/core/internal/services"
@@ -97,6 +99,24 @@ func splitLines(s string) []string {
 	return lines
 }
 
+func envInt(key string, fallback int) int {
+	if v := os.Getenv(key); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			return n
+		}
+	}
+	return fallback
+}
+
+func envDuration(key string, fallback time.Duration) time.Duration {
+	if v := os.Getenv(key); v != "" {
+		if d, err := time.ParseDuration(v); err == nil {
+			return d
+		}
+	}
+	return fallback
+}
+
 func main() {
 	// Load .env from parent directory
 	loadEnv("../.env")
@@ -120,10 +140,11 @@ func main() {
 		log.Fatalf("Failed to open DB: %v", err)
 	}
 	
-	// Hardening: Connection Pool Limits
-	db.SetMaxOpenConns(25)
-	db.SetMaxIdleConns(25)
-	db.SetConnMaxLifetime(5 * time.Minute)
+	// Hardening: Connection Pool Limits (configurable via env)
+	db.SetMaxOpenConns(envInt("DB_MAX_OPEN_CONNS", 25))
+	db.SetMaxIdleConns(envInt("DB_MAX_IDLE_CONNS", 25))
+	db.SetConnMaxLifetime(envDuration("DB_CONN_MAX_LIFETIME", 5*time.Minute))
+	db.SetConnMaxIdleTime(envDuration("DB_CONN_MAX_IDLE_TIME", 30*time.Second))
 
 	defer db.Close()
 
@@ -220,9 +241,19 @@ func main() {
 		AppRepo: appRepo,
 	}
 
+	// Redis Cache Initialization
+	redisURL := os.Getenv("REDIS_URL")
+	redisCache := cache.New(redisURL)
+	if redisCache != nil {
+		log.Println("Redis cache enabled.")
+	} else {
+		log.Println("Redis cache disabled (REDIS_URL not set or unreachable).")
+	}
+
 	consentService := &services.ConsentService{
-		ConsentRepo:  consentRepo,
-		AppRepo:      appRepo,
+		ConsentRepo: consentRepo,
+		AppRepo:     appRepo,
+		Cache:       redisCache,
 	}
 
 	tokenService := &services.TokenService{

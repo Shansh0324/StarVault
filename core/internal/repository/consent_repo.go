@@ -85,26 +85,23 @@ func (r *ConsentRepository) ListConsentsByUserID(ctx context.Context, userID str
 	return records, nil
 }
 
-func (r *ConsentRepository) RevokeConsent(ctx context.Context, id, userID string) error {
-	res, err := r.DB.ExecContext(ctx, `
+func (r *ConsentRepository) RevokeConsent(ctx context.Context, id, userID string) (string, error) {
+	var appID string
+	err := r.DB.QueryRowContext(ctx, `
 		UPDATE consents
 		SET status = 'REVOKED', revoked_at = CURRENT_TIMESTAMP
 		WHERE id = $1 AND user_id = $2 AND status = 'ACTIVE'
-	`, id, userID)
-	
+		RETURNING app_id
+	`, id, userID).Scan(&appID)
+
 	if err != nil {
-		return err
-	}
-	
-	rowsAffected, err := res.RowsAffected()
-	if err != nil {
-		return err
-	}
-	if rowsAffected == 0 {
-		return errors.New("consent not found or already revoked")
+		if err == sql.ErrNoRows {
+			return "", errors.New("consent not found or already revoked")
+		}
+		return "", err
 	}
 
-	return nil
+	return appID, nil
 }
 
 func (r *ConsentRepository) GetActiveConsentForApp(ctx context.Context, userID, appID string) (*ConsentRecord, error) {

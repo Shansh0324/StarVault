@@ -4,10 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strconv"
 	"strings"
 	"time"
 
+	"starvault/core/internal/cache"
 	"starvault/core/internal/dtos"
 	"starvault/core/internal/repository"
 )
@@ -21,6 +23,7 @@ var allowedScopes = map[string]bool{
 type ConsentService struct {
 	ConsentRepo *repository.ConsentRepository
 	AppRepo     *repository.AppRepository
+	Cache       *cache.RedisCache // nil = no caching
 }
 
 func (s *ConsentService) CreateConsent(ctx context.Context, userID string, req dtos.CreateConsentRequest) (*dtos.ConsentResponse, error) {
@@ -96,22 +99,49 @@ func (s *ConsentService) ListConsents(ctx context.Context, userID string) ([]dto
 }
 
 func (s *ConsentService) RevokeConsent(ctx context.Context, id, userID string) error {
-	return s.ConsentRepo.RevokeConsent(ctx, id, userID)
+	appID, err := s.ConsentRepo.RevokeConsent(ctx, id, userID)
+	if err != nil {
+		return err
+	}
+	if s.Cache != nil {
+		s.Cache.Del(ctx, consentCacheKey(userID, appID))
+	}
+	return nil
+}
+
+func consentCacheKey(userID, appID string) string {
+	return fmt.Sprintf("consent:%s:%s", userID, appID)
 }
 
 func (s *ConsentService) CheckConsent(ctx context.Context, req dtos.CheckConsentRequest) (*dtos.CheckConsentResponse, error) {
+	// Try cache first
+	if s.Cache != nil {
+		if cached, ok := s.Cache.Get(ctx, consentCacheKey(req.UserID, req.AppID)); ok {
+			var resp dtos.CheckConsentResponse
+			if json.Unmarshal([]byte(cached), &resp) == nil {
+				return &resp, nil
+			}
+		}
+	}
+
 	record, err := s.ConsentRepo.GetActiveConsentForApp(ctx, req.UserID, req.AppID)
 	if err != nil {
 		// No active consent found
-		return &dtos.CheckConsentResponse{Allowed: false}, nil
+		resp := &dtos.CheckConsentResponse{Allowed: false}
+		s.cacheConsentResult(ctx, req.UserID, req.AppID, resp)
+		return resp, nil
 	}
 
 	// Double check expiration at read time
 	if record.ExpiresAt.Before(time.Now()) || record.ExpiresAt.Equal(time.Now()) {
-		return &dtos.CheckConsentResponse{Allowed: false}, nil
+		resp := &dtos.CheckConsentResponse{Allowed: false}
+		s.cacheConsentResult(ctx, req.UserID, req.AppID, resp)
+		return resp, nil
 	}
 	if record.Status != "ACTIVE" {
-		return &dtos.CheckConsentResponse{Allowed: false}, nil
+		resp := &dtos.CheckConsentResponse{Allowed: false}
+		s.cacheConsentResult(ctx, req.UserID, req.AppID, resp)
+		return resp, nil
 	}
 
 	var scopes []string
@@ -152,11 +182,26 @@ func (s *ConsentService) CheckConsent(ctx context.Context, req dtos.CheckConsent
 	// Exact scope match
 	for _, grantedScope := range scopes {
 		if grantedScope == req.Scope {
-			return &dtos.CheckConsentResponse{Allowed: true}, nil
+			resp := &dtos.CheckConsentResponse{Allowed: true}
+			s.cacheConsentResult(ctx, req.UserID, req.AppID, resp)
+			return resp, nil
 		}
 	}
 
-	return &dtos.CheckConsentResponse{Allowed: false}, nil
+	resp := &dtos.CheckConsentResponse{Allowed: false}
+	s.cacheConsentResult(ctx, req.UserID, req.AppID, resp)
+	return resp, nil
+}
+
+func (s *ConsentService) cacheConsentResult(ctx context.Context, userID, appID string, resp *dtos.CheckConsentResponse) {
+	if s.Cache == nil {
+		return
+	}
+	data, err := json.Marshal(resp)
+	if err != nil {
+		return
+	}
+	s.Cache.Set(ctx, consentCacheKey(userID, appID), string(data), 60*time.Second)
 }
 
 func (s *ConsentService) mapToDTO(record *repository.ConsentRecord) *dtos.ConsentResponse {

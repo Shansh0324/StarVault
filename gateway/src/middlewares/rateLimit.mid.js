@@ -1,33 +1,31 @@
+const { getClient } = require('../utils/redisClient');
 const logger = require('../logger');
 
-const rateLimitMap = new Map();
+// Atomic INCR + EXPIRE via Lua to avoid race between the two commands.
+const LUA_SCRIPT = `
+local count = redis.call('INCR', KEYS[1])
+if count == 1 then
+    redis.call('PEXPIRE', KEYS[1], ARGV[1])
+end
+return count
+`;
 
-// Configurable limit (e.g. 50 requests per windowMs)
 function rateLimiter(windowMs = 60000, maxRequests = 50) {
-    return (req, res, next) => {
+    return async (req, res, next) => {
         const ip = req.ip || req.connection.remoteAddress;
-        const now = Date.now();
-        
-        let record = rateLimitMap.get(ip);
-        if (!record || now > record.resetTime) {
-            record = { count: 1, resetTime: now + windowMs };
-            rateLimitMap.set(ip, record);
-        } else {
-            record.count++;
-        }
+        const key = `rl:${ip}`;
 
-        if (record.count > maxRequests) {
-            logger.warn('rate_limit_exceeded', req.id, { ip });
-            return res.status(429).json({ error: { code: 'TOO_MANY_REQUESTS', message: 'Rate limit exceeded' } });
-        }
+        try {
+            const redis = getClient();
+            const count = await redis.eval(LUA_SCRIPT, 1, key, windowMs);
 
-        // Clean up expired entries periodically (simplistic cleanup for MVP)
-        if (Math.random() < 0.01) {
-            for (let [key, val] of rateLimitMap.entries()) {
-                if (Date.now() > val.resetTime) {
-                    rateLimitMap.delete(key);
-                }
+            if (count > maxRequests) {
+                logger.warn('rate_limit_exceeded', req.id, { ip });
+                return res.status(429).json({ error: { code: 'TOO_MANY_REQUESTS', message: 'Rate limit exceeded' } });
             }
+        } catch (err) {
+            // Fail open: Redis down should not block requests.
+            logger.error('rate_limit_redis_fallback', req.id, { error: err.message, ip });
         }
 
         next();

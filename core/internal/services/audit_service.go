@@ -124,32 +124,69 @@ func (s *AuditService) processEvent(ctx context.Context, event AuditEvent, m *na
 	log.Printf("AuditWorker: Inserted event %s (hash: %s...)", event.ID, newHash[:16])
 }
 
-// StartBatchWorker runs on a ticker and batches PENDING_BATCH events into Merkle trees.
-// One blockchain transaction per batch instead of one per event.
+// StartBatchWorker runs an adaptive loop that scales batch size based on NATS consumer lag.
+// When backlog is empty, it polls at BaseInterval. When backlog grows, it polls faster
+// and increases batch size up to BatchMaxSize (hard cap: 10,000).
 func (s *AuditService) StartBatchWorker(ctx context.Context) {
-	interval := s.BatchInterval
-	if interval == 0 {
-		interval = 60 * time.Second
+	baseInterval := s.BatchInterval
+	if baseInterval == 0 {
+		baseInterval = 60 * time.Second
 	}
-	maxSize := s.BatchMaxSize
-	if maxSize == 0 {
-		maxSize = 1000
+	baseBatchSize := s.BatchMaxSize
+	if baseBatchSize == 0 {
+		baseBatchSize = 1000
 	}
+	const maxBatchCap = 10000
+	const backpressureThreshold = 100000
+	const fastInterval = 5 * time.Second
 
-	log.Printf("BatchWorker: Started (interval=%s, maxSize=%d)", interval, maxSize)
+	currentInterval := baseInterval
+	currentBatchSize := baseBatchSize
 
-	ticker := time.NewTicker(interval)
-	defer ticker.Stop()
+	log.Printf("BatchWorker: Started (baseInterval=%s, baseBatch=%d, maxCap=%d)", baseInterval, baseBatchSize, maxBatchCap)
+
+	timer := time.NewTimer(currentInterval)
+	defer timer.Stop()
 
 	for {
 		select {
 		case <-ctx.Done():
 			log.Println("BatchWorker: Shutting down.")
 			return
-		case <-ticker.C:
-			s.processBatch(ctx, maxSize)
+		case <-timer.C:
+			s.processBatch(ctx, currentBatchSize)
+
+			// Adapt based on NATS consumer lag
+			pending := s.getConsumerPending(ctx)
+			if pending > int64(backpressureThreshold) {
+				log.Printf("BatchWorker: BACKPRESSURE_WARNING pending=%d exceeds threshold=%d. Consumer cannot keep up with producer rate.", pending, backpressureThreshold)
+			}
+
+			if pending > 0 {
+				// Scale up: double batch size, cap at maxBatchCap
+				currentBatchSize = min(currentBatchSize*2, maxBatchCap)
+				currentInterval = fastInterval
+			} else {
+				// Backlog drained, return to baseline
+				currentBatchSize = baseBatchSize
+				currentInterval = baseInterval
+			}
+
+			timer.Reset(currentInterval)
 		}
 	}
+}
+
+// getConsumerPending returns the number of pending messages for the AUDIT_WORKER consumer.
+func (s *AuditService) getConsumerPending(ctx context.Context) int64 {
+	if s.JetStream == nil {
+		return 0
+	}
+	info, err := s.JetStream.ConsumerInfo("AUDIT", "AUDIT_WORKER")
+	if err != nil {
+		return 0
+	}
+	return int64(info.NumPending)
 }
 
 // processBatch fetches pending events, builds a Merkle tree, anchors root on-chain, commits.
@@ -182,9 +219,8 @@ func (s *AuditService) processBatch(ctx context.Context, maxSize int) {
 	var txHash string
 	if s.BlockchainClient != nil {
 		bcCtx, cancel := context.WithTimeout(ctx, 60*time.Second)
-		defer cancel()
-
 		tx, err := s.BlockchainClient.AnchorHash(bcCtx, batchID, merkleRoot)
+		cancel() // cancel immediately after use, not deferred in a loop
 		if err != nil {
 			log.Printf("BatchWorker: Blockchain anchor failed for batch %s: %v (will retry next tick)", batchID, err)
 			return // events stay PENDING_BATCH, retry next tick
@@ -204,3 +240,4 @@ func (s *AuditService) processBatch(ctx context.Context, maxSize int) {
 
 	log.Printf("BatchWorker: COMMITTED batch %s (%d events, root: %s...)", committedBatchID, len(events), merkleRoot[:16])
 }
+
